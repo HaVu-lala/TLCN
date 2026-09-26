@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "description": "Versioned ground-truth manifest for authorized local experiments.",
+  "fixtures": [
+    {
+      "name": "demo",
+      "target_path": "/demo",
+      "ground_truth_available": true,
+      "expected_findings": [
+        "Reflected XSS",
+        "Stored XSS",
+        "Potential SQL Injection",
+        "Potential BOLA/IDOR"
+      ],
+      "notes": "Deterministic fixture used for offline Precision, Recall and F1 evaluation."
+    },
+    {
+      "name": "juice-shop",
+      "target_host": "juice-shop",
+      "port": 3000,
+      "ground_truth_available": false,
+      "expected_findings": [],
+      "notes": "Requires a separately verified, version-pinned scenario dataset."
+    },
+    {
+      "name": "webgoat",
+      "target_host": "webgoat",
+      "port": 8082,
+      "ground_truth_available": false,
+      "expected_findings": [],
+      "notes": "Requires selected lesson paths and a verified oracle."
+    },
+    {
+      "name": "mutillidae",
+      "target_host": "mutillidae",
+      "port": 8083,
+      "ground_truth_available": false,
+      "expected_findings": [],
+      "notes": "Requires selected exercise paths and a verified oracle."
+    },
+    {
+      "name": "bwapp",
+      "target_host": "bwapp",
+      "port": 8084,
+      "ground_truth_available": false,
+      "expected_findings": [],
+      "notes": "Requires selected exercise paths and a verified oracle."
+    }
+  ]
+}

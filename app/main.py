@@ -16,6 +16,7 @@ app = FastAPI(title="Sentinel Web Pentest Agent", version="0.1.0")
 static_dir = Path(__file__).parent / "static"
 scan_repository = ScanRepository()
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+demo_notes: list[str] = []
 
 
 @app.get("/", include_in_schema=False)
@@ -75,7 +76,17 @@ def demo_lab(q: str = "") -> str:
     return f"""<!doctype html><html><head><title>Sentinel Demo Lab</title></head>
     <body><h1>Demo Search</h1><form method='get' action='/demo'>
     <label>Search <input name='q' value='{q}'></label><button>Search</button></form>
+    <form method='get' action='/demo/notes'><label>Note <input name='note'></label><button>Save note</button></form>
     <p>Results for: {q}</p><p>{database_message}</p></body></html>"""
+
+
+@app.get("/demo/notes", response_class=HTMLResponse)
+def demo_notes_lab(note: str = "") -> str:
+    """Intentionally vulnerable stored-XSS fixture for offline demonstrations."""
+    if note:
+        demo_notes.append(note)
+    rendered_notes = "".join(f"<li>{item}</li>" for item in demo_notes)
+    return f"<html><body><h1>Saved notes</h1><ul>{rendered_notes}</ul></body></html>"
 
 
 @app.get("/demo/object", response_class=HTMLResponse)
@@ -92,12 +103,12 @@ def create_scan(request: ScanRequest) -> ScanResult:
     except ScopeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     started = perf_counter()
-    agent = PentestAgent(target)
+    agent = PentestAgent(target, session_headers=request.session_headers)
     scan_id, pages, findings = agent.run()
     duration_ms = round((perf_counter() - started) * 1000, 2)
-    evaluation: dict[str, object] = {"ground_truth_available": False}
+    evaluation: dict[str, object] = {"ground_truth_available": False, "fpr_available": False}
     if urlparse(target).path == "/demo":
-        expected = {"Reflected XSS", "Potential SQL Injection", "Potential BOLA/IDOR"}
+        expected = {"Reflected XSS", "Stored XSS", "Potential SQL Injection", "Potential BOLA/IDOR"}
         detected = {finding.category for finding in findings}
         true_positive = len(expected & detected)
         false_positive = len(detected - expected)
@@ -105,7 +116,7 @@ def create_scan(request: ScanRequest) -> ScanResult:
         precision = true_positive / (true_positive + false_positive) if true_positive + false_positive else 0
         recall = true_positive / len(expected) if expected else 0
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
-        evaluation = {"ground_truth_available": True, "expected_findings": len(expected), "true_positive": true_positive, "false_positive": false_positive, "false_negative": false_negative, "precision": round(precision, 3), "recall": round(recall, 3), "f1_score": round(f1, 3)}
-    result = ScanResult(scan_id=scan_id, target_url=target, pages=pages, findings=findings, agent_summary=agent.summary, used_deepseek=agent.used_deepseek, duration_ms=duration_ms, evaluation=evaluation, agent_trace=agent.trace)
+        evaluation = {"ground_truth_available": True, "fpr_available": False, "expected_findings": len(expected), "true_positive": true_positive, "false_positive": false_positive, "false_negative": false_negative, "precision": round(precision, 3), "recall": round(recall, 3), "f1_score": round(f1, 3)}
+    result = ScanResult(scan_id=scan_id, target_url=target, pages=pages, findings=findings, agent_summary=agent.summary, used_deepseek=agent.used_deepseek, duration_ms=duration_ms, evaluation=evaluation, agent_trace=agent.trace, llm_usage=agent.llm_usage, llm_calls=agent.llm_calls, llm_latency_ms=agent.llm_latency_ms, llm_cost_usd=agent.llm_cost_usd)
     scan_repository.save(result)
     return result

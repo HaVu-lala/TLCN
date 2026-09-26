@@ -8,9 +8,13 @@ from app.config import settings
 
 
 class WebTools:
-    def __init__(self, target_url: str):
+    def __init__(self, target_url: str, session_headers: dict[str, str] | None = None):
         self.target_url = target_url.rstrip("/")
-        self.client = httpx.Client(timeout=settings.request_timeout_seconds, follow_redirects=True)
+        self.client = httpx.Client(
+            timeout=settings.request_timeout_seconds,
+            follow_redirects=True,
+            headers=session_headers or {},
+        )
 
     def crawl(self) -> list[dict]:
         queue = deque([self.target_url])

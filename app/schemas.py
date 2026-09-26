@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, HttpUrl
 class ScanRequest(BaseModel):
     target_url: HttpUrl
     authorized: bool = Field(description="Explicit confirmation that the target is an authorized lab")
+    session_headers: dict[str, str] = Field(default_factory=dict, description="Optional lab session headers, such as Cookie or Authorization")
 
 
 class Finding(BaseModel):
@@ -33,3 +34,7 @@ class ScanResult(BaseModel):
     duration_ms: float
     evaluation: dict[str, Any]
     agent_trace: list[AgentTrace] = Field(default_factory=list)
+    llm_usage: dict[str, int] = Field(default_factory=dict)
+    llm_calls: int = 0
+    llm_latency_ms: float = 0.0
+    llm_cost_usd: float | None = None

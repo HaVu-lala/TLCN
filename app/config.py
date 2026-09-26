@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     allowed_target_hosts: str = "localhost,127.0.0.1"
     max_crawl_pages: int = 8
     request_timeout_seconds: float = 8.0
+    deepseek_input_cost_per_million: float = 0.0
+    deepseek_output_cost_per_million: float = 0.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
