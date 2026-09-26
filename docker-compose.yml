@@ -1,0 +1,39 @@
+services:
+  sentinel:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      ALLOWED_TARGET_HOSTS: localhost,127.0.0.1,juice-shop,webgoat,mutillidae,bwapp
+    volumes:
+      - sentinel-data:/service/data
+    depends_on:
+      - juice-shop
+      - webgoat
+      - mutillidae
+      - bwapp
+
+  juice-shop:
+    image: bkimminich/juice-shop:v19.2.0
+    ports:
+      - "3000:3000"
+
+  webgoat:
+    image: webgoat/webgoat
+    ports:
+      - "8082:8080"
+
+  mutillidae:
+    image: citizenstig/nowasp
+    ports:
+      - "8083:80"
+
+  bwapp:
+    image: raesene/bwapp
+    ports:
+      - "8084:80"
+
+volumes:
+  sentinel-data:

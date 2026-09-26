@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sentinel | Web Pentest Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/history.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar"><div class="brand"><span class="brand-mark">S</span><span>SENTINEL</span></div><div class="status"><span class="dot"></span> LOCAL LAB MODE</div></header>
+    <section class="intro"><div><p class="kicker">AUTONOMOUS SECURITY WORKBENCH / 0.1</p><h1>Probe the web.<br><em>Prove the risk.</em></h1><p class="lede">A bounded AI Agent that maps authorized lab targets, chooses safe checks, and turns evidence into an actionable report.</p></div><div class="signal"><span class="signal-line"></span><span>REACT LOOP<br><b>READY</b></span></div></section>
+    <section class="workspace">
+      <aside class="control-panel"><div class="panel-label">01 / CAMPAIGN</div><form id="scan-form"><label for="target">Target URL</label><input id="target" type="url" value="http://127.0.0.1:8000/demo" required><label class="consent"><input id="authorized" type="checkbox" required><span>I have permission to test this target.</span></label><button type="submit" id="run"><span>Start campaign</span><span class="arrow">-&gt;</span></button></form><div class="guardrail"><span class="lock">[+]</span><div><b>Scope guard active</b><p>Only localhost, loopback, private IPs, and explicitly configured lab hosts are accepted.</p></div></div></aside>
+      <section class="results"><div class="panel-label">02 / OBSERVATIONS <span id="phase">IDLE</span></div><div id="empty" class="empty"><div class="crosshair">+</div><h2>Awaiting a target</h2><p>Run a campaign to begin reconnaissance.</p></div><div id="report" class="hidden"><div class="metrics"><div><span>Pages mapped</span><strong id="pages">0</strong></div><div><span>Findings</span><strong id="findings">0</strong></div><div><span>AI planner</span><strong id="ai">FALLBACK</strong></div><div><span>F1 score</span><strong id="f1">-</strong></div></div><p id="summary" class="summary"></p><p id="timing" class="summary"></p><div id="trace" class="trace"></div><a id="download" class="download" target="_blank" rel="noopener">Download JSON report</a><div id="finding-list" class="finding-list"></div></div></section>
+    </section>
+    <section class="history"><div class="panel-label">03 / CAMPAIGN HISTORY <span id="history-count">0 RUNS</span></div><div id="history-list" class="history-list"><p class="summary">No previous campaigns.</p></div></section>
+    <footer><span>AUTHORIZED TESTING ONLY</span><span>DEEPSEEK / HTTPX / BEAUTIFULSOUP</span></footer>
+  </main><script src="/static/app.js"></script>
+</body></html>
