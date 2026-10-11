@@ -73,6 +73,7 @@ function renderReport(data) {
   empty.classList.add('hidden');
   report.classList.remove('hidden');
   document.querySelector('#pages').textContent = data.pages.length;
+  document.querySelector('#endpoints').textContent = data.pages.reduce((count, page) => count + (page.endpoints?.length || 0), 0);
   document.querySelector('#findings').textContent = data.findings.length;
   document.querySelector('#ai').textContent = data.used_deepseek ? 'DEEPSEEK' : 'FALLBACK';
   document.querySelector('#f1').textContent = data.evaluation.ground_truth_available ? data.evaluation.f1_score : '-';

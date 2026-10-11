@@ -112,6 +112,17 @@ class AttackAgent:
                     if "basic_sqli" in plan:
                         result = self._request(form, name, "'", method)
                         probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"]))
+            for endpoint in page.get("endpoints", []):
+                if endpoint["url"].rstrip("/").endswith("/rest/admin/application-configuration"):
+                    result = self.tools.request(endpoint["url"])
+                    probes.append(AttackProbe("sensitive_config", result["url"], "response", result["body"], result["status"]))
+                for name in endpoint.get("parameters", []):
+                    if "reflected_xss" in plan:
+                        result = self._request_endpoint(endpoint, name, "<script>alert(1)</script>")
+                        probes.append(AttackProbe("reflected_xss", result["url"], name, result["body"], result["status"]))
+                    if "basic_sqli" in plan:
+                        result = self._request_endpoint(endpoint, name, "'")
+                        probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"]))
         if "idor" in plan and self.tools.target_url.rstrip("/").endswith("/demo"):
             object_url = f"{self.tools.target_url}/object"
             if self.comparison_tools:
@@ -128,6 +139,10 @@ class AttackAgent:
         if form.get("source") == "browser":
             return self.tools.browser_request(form, field, payload)
         return self.tools.request(form["action"], method, params={field: payload} if method == "GET" else None, data={field: payload} if method != "GET" else None)
+
+    def _request_endpoint(self, endpoint: dict, field: str, payload: str) -> dict:
+        method = endpoint.get("method", "GET")
+        return self.tools.request(endpoint["url"], method, params={field: payload} if method == "GET" else None, data={field: payload} if method != "GET" else None)
 
     def refine(self, pages: list[dict], plan: list[str], findings: list[Finding]) -> list[AttackProbe]:
         """Run one bounded feedback pass for checks not confirmed initially."""
@@ -165,6 +180,8 @@ class VerificationAgent:
                 sql_error = re.search(r"(sql syntax|sqlite error|mysql|postgresql|syntax error)", probe.body, re.I)
                 if sql_error:
                     findings.append(Finding(category="Potential SQL Injection", severity="high", url=probe.url, parameter=probe.parameter, evidence=f"Database error signature observed: {sql_error.group(0)}.", recommendation="Use parameterized queries and avoid returning database errors to clients."))
+            if probe.kind == "sensitive_config" and probe.status == 200 and '"config"' in probe.body:
+                findings.append(Finding(category="Potential Sensitive Configuration Exposure", severity="medium", url=probe.url, parameter=None, evidence="An administrative application-configuration response was accessible without an authorization denial.", recommendation="Require authorization for administrative configuration endpoints and avoid exposing internal configuration to unauthenticated clients."))
             if probe.kind == "idor" and probe.status == 200 and probe.baseline_body:
                 if probe.body == probe.baseline_body:
                     evidence = "A second authorized session accessed the first session's object without an authorization denial."
@@ -207,7 +224,8 @@ class PentestAgent:
     def run(self) -> tuple[str, list[dict], list[Finding]]:
         self.trace.append(AgentTrace(agent="SessionManager", status="completed", detail=f"Session mode: {self.authentication_status}. Credentials are not persisted."))
         pages = self.recon.run()
-        self.trace.append(AgentTrace(agent=self.recon.name, status="completed", detail=f"Discovered {len(pages)} page(s)."))
+        endpoint_count = sum(len(page.get("endpoints", [])) for page in pages)
+        self.trace.append(AgentTrace(agent=self.recon.name, status="completed", detail=f"Discovered {len(pages)} page(s) and {endpoint_count} endpoint(s)."))
         plan = self.planner.run(pages)
         self.used_deepseek = self.planner.used_deepseek
         self.llm_usage = self.planner.llm_usage

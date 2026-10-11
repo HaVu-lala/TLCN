@@ -1,5 +1,5 @@
 from collections import deque
-from urllib.parse import urldefrag, urljoin, urlparse
+from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -10,7 +10,11 @@ from app.schemas import LoginRequest
 
 class WebTools:
     def __init__(self, target_url: str, session_headers: dict[str, str] | None = None, login: LoginRequest | None = None):
-        self.target_url = target_url.rstrip("/")
+        normalized_target = target_url.rstrip("/")
+        parsed_target = urlparse(normalized_target)
+        if parsed_target.path.lower() == "/webgoat":
+            normalized_target = f"{parsed_target.scheme}://{parsed_target.netloc}/WebGoat/start.mvc"
+        self.target_url = normalized_target
         self.authentication_status = "header-session" if session_headers else "anonymous"
         self.client = httpx.Client(
             timeout=settings.request_timeout_seconds,
@@ -19,6 +23,18 @@ class WebTools:
         )
         if login:
             self._login(login)
+
+    def _browser_context(self, playwright):
+        browser = playwright.chromium.launch(headless=True)
+        context = browser.new_context(extra_http_headers=dict(self.client.headers))
+        host = urlparse(self.target_url).hostname
+        cookies = [
+            {"name": name, "value": value, "domain": host, "path": "/"}
+            for name, value in self.client.cookies.items()
+        ]
+        if cookies:
+            context.add_cookies(cookies)
+        return browser, context
 
     def _login(self, login: LoginRequest) -> None:
         if urlparse(str(login.login_url)).netloc != urlparse(self.target_url).netloc:
@@ -88,7 +104,7 @@ class WebTools:
                             "source": "juice-shop-api-adapter",
                         }
                     )
-            pages.append({"url": url, "status": response.status_code, "content_type": content_type, "forms": forms})
+            pages.append({"url": url, "status": response.status_code, "content_type": content_type, "forms": forms, "endpoints": []})
         if settings.browser_scan_enabled:
             self._augment_with_browser(pages)
         return pages
@@ -102,9 +118,23 @@ class WebTools:
             return
         try:
             with sync_playwright() as playwright:
-                browser = playwright.chromium.launch(headless=True)
-                context = browser.new_context(extra_http_headers=self.client.headers)
+                browser, context = self._browser_context(playwright)
                 page = context.new_page()
+                network_requests: list[dict] = []
+
+                def capture_request(request) -> None:
+                    parsed = urlparse(request.url)
+                    excluded = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2")
+                    ignored_prefixes = ("/assets/", "/socket.io/", "/static/")
+                    if parsed.netloc == urlparse(self.target_url).netloc and not parsed.path.endswith(excluded) and not parsed.path.startswith(ignored_prefixes):
+                        network_requests.append({
+                            "url": request.url,
+                            "method": request.method,
+                            "parameters": [name for name, _ in parse_qsl(parsed.query, keep_blank_values=True)],
+                            "source": "browser-network",
+                        })
+
+                page.on("request", capture_request)
                 page.goto(pages[0]["url"], wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
                 page.wait_for_timeout(750)
                 dismiss = page.get_by_role("button", name="Close Welcome Banner")
@@ -132,7 +162,7 @@ class WebTools:
                 browser_routes = page.locator("a[href]").evaluate_all(
                     """elements => elements.map(element => element.href).filter(href => {
                         const url = new URL(href, window.location.href);
-                        return url.origin === window.location.origin && url.pathname.startsWith('/WebGoat');
+                        return url.origin === window.location.origin && (url.pathname.startsWith('/WebGoat') || url.hash.startsWith('#/'));
                     })"""
                 )
                 known_urls = {entry["url"] for entry in pages}
@@ -165,17 +195,28 @@ class WebTools:
                     )
                     known_urls.add(route)
                 pages[0]["browser_rendered"] = True
+                pages[0]["endpoints"] = self._merge_endpoints(pages[0].get("endpoints", []), network_requests)
                 context.close()
                 browser.close()
         except Exception as exc:
             pages[0]["browser_error"] = str(exc)
 
+    @staticmethod
+    def _merge_endpoints(existing: list[dict], discovered: list[dict]) -> list[dict]:
+        merged = {(item["method"], item["url"]): item for item in existing}
+        for item in discovered:
+            key = (item["method"], item["url"])
+            if key in merged:
+                merged[key]["parameters"] = sorted(set(merged[key].get("parameters", [])) | set(item.get("parameters", [])))
+            else:
+                merged[key] = item
+        return list(merged.values())
+
     def browser_request(self, form: dict, field: str, payload: str) -> dict:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            context = browser.new_context(extra_http_headers=self.client.headers)
+            browser, context = self._browser_context(playwright)
             page = context.new_page()
             page.goto(form["action"], wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
             page.wait_for_timeout(500)

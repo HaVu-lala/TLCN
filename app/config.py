@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-chat"
     deepseek_base_url: str = "https://api.deepseek.com"
     allowed_target_hosts: str = "localhost,127.0.0.1"
-    max_crawl_pages: int = 8
+    max_crawl_pages: int = 32
     request_timeout_seconds: float = 8.0
     browser_scan_enabled: bool = True
     browser_timeout_ms: int = 15000

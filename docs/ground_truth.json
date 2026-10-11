@@ -20,6 +20,7 @@
       "port": 3000,
       "ground_truth_available": false,
       "scenarios": [
+        {"id": "juice-shop-config-01", "category": "Potential Sensitive Configuration Exposure", "oracle": "unauthenticated-200-config", "status": "verified-local-image"},
         {"id": "juice-shop-authz-01", "category": "Potential BOLA/IDOR", "oracle": "manual-authenticated-comparison", "status": "requires-run"},
         {"id": "juice-shop-xss-01", "category": "Reflected XSS", "oracle": "manual-response-review", "status": "requires-run"}
       ],
