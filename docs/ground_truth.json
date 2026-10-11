@@ -19,32 +19,44 @@
       "target_host": "juice-shop",
       "port": 3000,
       "ground_truth_available": false,
-      "expected_findings": [],
-      "notes": "Requires a separately verified, version-pinned scenario dataset."
+      "scenarios": [
+        {"id": "juice-shop-authz-01", "category": "Potential BOLA/IDOR", "oracle": "manual-authenticated-comparison", "status": "requires-run"},
+        {"id": "juice-shop-xss-01", "category": "Reflected XSS", "oracle": "manual-response-review", "status": "requires-run"}
+      ],
+      "notes": "Run only against the pinned Compose image and record the exact route and reset state before enabling benchmark metrics."
     },
     {
       "name": "webgoat",
       "target_host": "webgoat",
       "port": 8082,
       "ground_truth_available": false,
-      "expected_findings": [],
-      "notes": "Requires selected lesson paths and a verified oracle."
+      "scenarios": [
+        {"id": "webgoat-sqli-01", "category": "Potential SQL Injection", "oracle": "lesson-confirmation", "status": "requires-run"},
+        {"id": "webgoat-authz-01", "category": "Potential BOLA/IDOR", "oracle": "lesson-confirmation", "status": "requires-run"}
+      ],
+      "notes": "Select and record the exact WebGoat lesson path before enabling benchmark metrics."
     },
     {
       "name": "mutillidae",
       "target_host": "mutillidae",
       "port": 8083,
       "ground_truth_available": false,
-      "expected_findings": [],
-      "notes": "Requires selected exercise paths and a verified oracle."
+      "scenarios": [
+        {"id": "mutillidae-xss-01", "category": "Reflected XSS", "oracle": "manual-response-review", "status": "requires-run"},
+        {"id": "mutillidae-sqli-01", "category": "Potential SQL Injection", "oracle": "manual-response-review", "status": "requires-run"}
+      ],
+      "notes": "Record the selected exercise URL and reset procedure before enabling benchmark metrics."
     },
     {
       "name": "bwapp",
       "target_host": "bwapp",
       "port": 8084,
       "ground_truth_available": false,
-      "expected_findings": [],
-      "notes": "Requires selected exercise paths and a verified oracle."
+      "scenarios": [
+        {"id": "bwapp-xss-01", "category": "Reflected XSS", "oracle": "manual-response-review", "status": "requires-run"},
+        {"id": "bwapp-sqli-01", "category": "Potential SQL Injection", "oracle": "manual-response-review", "status": "requires-run"}
+      ],
+      "notes": "Record the selected exercise URL and reset procedure before enabling benchmark metrics."
     }
   ]
 }

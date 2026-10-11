@@ -3,10 +3,18 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, HttpUrl
 
 
+class LoginRequest(BaseModel):
+    login_url: HttpUrl
+    username: str
+    password: str
+
+
 class ScanRequest(BaseModel):
     target_url: HttpUrl
     authorized: bool = Field(description="Explicit confirmation that the target is an authorized lab")
     session_headers: dict[str, str] = Field(default_factory=dict, description="Optional lab session headers, such as Cookie or Authorization")
+    comparison_session_headers: dict[str, str] = Field(default_factory=dict, description="Optional second authorized lab session used for BOLA comparison")
+    login: LoginRequest | None = Field(default=None, description="Optional authorized lab login used to create a scan session")
 
 
 class Finding(BaseModel):

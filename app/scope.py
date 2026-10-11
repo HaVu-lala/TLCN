@@ -16,11 +16,13 @@ def validate_target(url: str, authorized: bool) -> str:
         raise ScopeError("Target must be an HTTP or HTTPS URL.")
     hostname = parsed.hostname.lower()
     if hostname in settings.allowed_hosts:
-        return url
+        normalized_path = parsed.path.rstrip("/") or "/"
+        return parsed._replace(path=normalized_path).geturl()
     try:
         address = ip_address(hostname)
     except ValueError:
         address = None
     if address and (address.is_private or address.is_loopback):
-        return url
+        normalized_path = parsed.path.rstrip("/") or "/"
+        return parsed._replace(path=normalized_path).geturl()
     raise ScopeError("Target is outside the default lab scope. Add its host to ALLOWED_TARGET_HOSTS.")

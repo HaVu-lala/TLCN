@@ -59,14 +59,14 @@ def html_report(scan_id: str) -> str:
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     findings = "".join(
-        f"<tr><td>{escape(item.category)}</td><td>{escape(item.severity)}</td><td>{escape(item.url)}</td><td>{escape(item.evidence)}</td><td>{escape(item.recommendation)}</td></tr>"
+        f"<tr><td>{escape(item.category)}</td><td>{escape(item.severity)}</td><td>{escape(item.url)}</td><td>{escape(item.parameter or 'response')}</td><td>{escape(item.evidence)}</td><td>{escape(item.recommendation)}</td></tr>"
         for item in result.findings
-    ) or "<tr><td colspan='5'>No confirmed findings</td></tr>"
+    ) or "<tr><td colspan='6'>No confirmed findings</td></tr>"
     trace = "".join(f"<li><b>{escape(step.agent)}</b> [{escape(step.status)}] {escape(step.detail)}</li>" for step in result.agent_trace)
     return f"""<!doctype html><html><head><meta charset='utf-8'><title>Sentinel Report {escape(result.scan_id)}</title>
     <style>body{{font:15px system-ui;max-width:1100px;margin:40px auto;color:#172321}}h1{{color:#ff6b3d}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #d8ddd2;padding:10px;text-align:left;vertical-align:top}}th{{background:#c9f36b}}</style></head>
     <body><h1>Sentinel Security Report</h1><p><b>Target:</b> {escape(result.target_url)}<br><b>Duration:</b> {result.duration_ms} ms<br><b>Summary:</b> {escape(result.agent_summary)}</p>
-    <h2>Agent trace</h2><ol>{trace}</ol><h2>Findings ({len(result.findings)})</h2><table><thead><tr><th>Category</th><th>Severity</th><th>URL</th><th>Evidence</th><th>Recommendation</th></tr></thead><tbody>{findings}</tbody></table></body></html>"""
+    <h2>Agent trace</h2><ol>{trace}</ol><h2>Findings ({len(result.findings)})</h2><table><thead><tr><th>Category</th><th>Severity</th><th>URL</th><th>Parameter</th><th>Evidence</th><th>Recommendation</th></tr></thead><tbody>{findings}</tbody></table></body></html>"""
 
 
 @app.get("/demo", response_class=HTMLResponse)
@@ -91,9 +91,10 @@ def demo_notes_lab(note: str = "") -> str:
 
 @app.get("/demo/object", response_class=HTMLResponse)
 def demo_object(object_id: str = Query("1", alias="id")) -> str:
-    """Intentionally vulnerable object endpoint for offline BOLA/IDOR demonstrations."""
-    owner = "user-1" if object_id == "1" else "user-2"
-    return f"<html><body><h1>Object {escape(object_id)}</h1><p>Owner: {owner}</p><p>Secret project data for object {escape(object_id)}</p></body></html>"
+    """Intentionally vulnerable object endpoint for two-session BOLA demonstrations."""
+    objects = {"1": ("user-1", "Project Alpha"), "2": ("user-2", "Project Beta")}
+    owner, project = objects.get(object_id, ("user-2", "Unknown project"))
+    return f"<html><body><h1>Object {escape(object_id)}</h1><p>Owner: {owner}</p><p>Secret project data for {escape(project)}</p></body></html>"
 
 
 @app.post("/api/scans", response_model=ScanResult)
@@ -103,8 +104,11 @@ def create_scan(request: ScanRequest) -> ScanResult:
     except ScopeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     started = perf_counter()
-    agent = PentestAgent(target, session_headers=request.session_headers)
-    scan_id, pages, findings = agent.run()
+    try:
+        agent = PentestAgent(target, session_headers=request.session_headers, comparison_session_headers=request.comparison_session_headers, login=request.login)
+        scan_id, pages, findings = agent.run()
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
     duration_ms = round((perf_counter() - started) * 1000, 2)
     evaluation: dict[str, object] = {"ground_truth_available": False, "fpr_available": False}
     if urlparse(target).path == "/demo":

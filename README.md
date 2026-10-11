@@ -14,11 +14,12 @@ Agent sử dụng vòng lặp ReAct có giới hạn:
 ## Chức năng chính
 
 - Scope Guard giới hạn mục tiêu trong localhost, loopback, IP nội bộ hoặc host lab được cấu hình.
-- Crawler phát hiện URL và form nhập liệu.
+- Crawler phát hiện URL và form nhập liệu, có thể render input sinh bởi JavaScript bằng Playwright.
+- Adapter nhận diện Juice Shop SPA và kiểm tra API search `/rest/products/search?q=...` khi trang không có HTML form.
 - Kiến trúc Multi-Agent gồm Recon, Planning, Attack, Verification và Reporting Agent.
 - Agent planner tích hợp DeepSeek API, có fallback offline.
 - Phát hiện cơ bản Reflected XSS, Stored XSS và SQL Injection.
-- Kiểm tra BOLA/IDOR bằng so sánh quyền truy cập object trong lab demo.
+- Kiểm tra BOLA/IDOR bằng so sánh quyền truy cập object từ hai session lab.
 - Lưu lịch sử campaign bằng SQLite.
 - Xuất báo cáo JSON và HTML.
 - Tính Precision, Recall, F1-Score, TP, FP, FN và thời gian scan trên lab demo.
@@ -30,6 +31,7 @@ Agent sử dụng vòng lặp ReAct có giới hạn:
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+python -m playwright install chromium
 Copy-Item .env.example .env
 uvicorn app.main:app --reload
 ```
@@ -87,6 +89,22 @@ Mục tiêu `/demo` có bốn lỗi đã biết:
 
 Sau mỗi lần scan, hệ thống đối chiếu finding với ground truth phiên bản hóa trong `docs/ground_truth.json` và tính Precision, Recall, F1-Score, True Positive, False Positive, False Negative và thời gian thực thi. FPR được đánh dấu là chưa khả dụng khi chưa có tập mẫu âm. Chỉ số benchmark chỉ được tính khi mục tiêu có path chính xác là `/demo`.
 
+Để thực nghiệm BOLA bằng hai session, gửi thêm `comparison_session_headers` trong request `/api/scans`. Ví dụ chỉ dùng header của hai tài khoản lab được cấp phép:
+
+```json
+{
+  "target_url": "http://127.0.0.1:8000/demo",
+  "authorized": true,
+  "session_headers": {"X-Lab-User": "user-1"},
+  "comparison_session_headers": {"X-Lab-User": "user-2"}
+}
+```
+
+Dashboard cũng hỗ trợ authenticated scan. Mở mục `Authenticated lab session`,
+nhập login URL của Juice Shop (`http://127.0.0.1:3000/rest/user/login`), email
+và password của tài khoản lab. Sentinel sẽ tự tạo session/token cho campaign;
+credential chỉ tồn tại trong request hiện tại và không được ghi vào report.
+
 Endpoint báo cáo:
 
 - JSON: `/api/scans/{scan_id}/report`
@@ -118,4 +136,4 @@ docs/               Tài liệu kiến trúc và đánh giá
 
 ## Giới hạn và hướng phát triển
 
-Phiên bản hiện tại phục vụ tiểu luận, tập trung vào XSS, SQL Injection và BOLA/IDOR trong môi trường lab được cho phép. Pipeline gồm các Recon, Planning, Attack, Verification và Reporting Agent, kèm một vòng ReAct refinement có giới hạn. Session headers có thể được cung cấp cho từng campaign nhưng chưa có fixture hai người dùng hoàn chỉnh. Ground truth cho các lab Docker và benchmark với OWASP ZAP là hướng phát triển tiếp theo.
+Phiên bản hiện tại phục vụ tiểu luận, tập trung vào XSS, SQL Injection và BOLA/IDOR trong môi trường lab được cho phép. Pipeline gồm các Recon, Planning, Attack, Verification và Reporting Agent, kèm một vòng ReAct refinement có giới hạn. Ground-truth manifest cho các lab Docker đã có scenario ID và oracle, nhưng phải chạy xác nhận từng scenario trước khi báo cáo metric. Benchmark với OWASP ZAP là hướng phát triển tiếp theo.

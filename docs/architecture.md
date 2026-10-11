@@ -2,7 +2,9 @@
 
 The system uses a bounded multi-agent ReAct-style pipeline. `PentestAgent` is a compatibility facade that orchestrates specialized workers:
 
-- **ReconAgent:** `WebTools.crawl()` extracts same-host pages and HTML forms.
+- **ReconAgent:** `WebTools.crawl()` extracts same-host pages and HTML forms; a
+	bounded Juice Shop adapter exposes `/rest/products/search?q=...` when the
+	Angular shell has no HTML forms.
 - **PlanningAgent:** DeepSeek selects only `reflected_xss`, `basic_sqli`, or `idor`; without a key, a deterministic plan keeps the demo runnable.
 - **AttackAgent:** `WebTools.request()` submits controlled markers and a quote probe to discovered form fields.
 - **VerificationAgent:** response signatures become validated `Finding` objects.
@@ -31,15 +33,17 @@ persists campaign reports in SQLite, and exports JSON and HTML reports.
 
 The `/demo` target is the reproducible benchmark fixture. The external Docker
 targets (OWASP Juice Shop, WebGoat, Mutillidae II, and bWAPP) are available for
-authorized manual experiments, but do not yet have a versioned ground-truth
-dataset, so Precision, Recall, and F1 are not reported for them.
+authorized manual experiments. Their versioned scenario manifest exists, but
+each scenario remains `requires-run` until its exact route, expected behavior,
+and reset procedure are verified; Precision, Recall, and F1 are not reported
+for them before that step.
 
 Remaining thesis work includes:
 
-- Add operator-supplied authenticated sessions and authorization context for a
-	realistic BOLA/IDOR experiment.
-- Add stored-XSS coverage and broader SQLi verification beyond database error
-	signatures.
+- Run and record the two-session BOLA/IDOR experiment with real credentials in
+	an authorized lab. The API now accepts separate owner and comparison session
+	headers and keeps them out of persisted reports.
+- Add broader SQLi verification beyond database error signatures.
 - Record token usage, API cost, false-positive rate, and per-agent latency.
 	Token usage is now included in each scan result; FPR remains explicitly
 	unavailable until a negative-case dataset is added.

@@ -24,6 +24,15 @@ def test_demo_object_changes_by_identifier():
     assert first.text != second.text
 
 
+def test_demo_object_is_accessible_from_two_distinct_lab_sessions():
+    client = TestClient(app)
+    owner = client.get("/demo/object?id=1", headers={"X-Lab-User": "user-1"})
+    other = client.get("/demo/object?id=1", headers={"X-Lab-User": "user-2"})
+    assert owner.status_code == 200
+    assert other.status_code == 200
+    assert owner.text == other.text
+
+
 def test_demo_notes_persist_controlled_marker():
     client = TestClient(app)
     marker = "<script>alert(1)</script>"
@@ -37,6 +46,7 @@ def test_scan_request_accepts_session_headers_without_exposing_them_in_result():
         target_url="http://localhost:8000/demo",
         authorized=True,
         session_headers={"Cookie": "lab-session=demo"},
+        comparison_session_headers={"Cookie": "lab-session=other"},
     )
     result = ScanResult(
         scan_id="session-test",
@@ -49,5 +59,8 @@ def test_scan_request_accepts_session_headers_without_exposing_them_in_result():
         evaluation={"ground_truth_available": False},
     )
     assert request.session_headers["Cookie"] == "lab-session=demo"
+    assert request.comparison_session_headers["Cookie"] == "lab-session=other"
     assert "session_headers" not in result.model_dump()
+    assert "comparison_session_headers" not in result.model_dump()
     assert "lab-session=demo" not in result.model_dump_json()
+    assert "lab-session=other" not in result.model_dump_json()

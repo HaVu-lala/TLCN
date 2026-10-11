@@ -9,10 +9,49 @@ loadHistory();
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   runButton.disabled = true;
-  runButton.querySelector('span').textContent = 'Mapping target...';
+  const progressSteps = [
+    ['Mapping target...', 'RECON'],
+    ['Planning checks...', 'PLANNING'],
+    ['Running controlled probes...', 'ATTACK'],
+    ['Verifying responses...', 'VERIFY'],
+  ];
+  let progressIndex = 0;
+  runButton.querySelector('span').textContent = progressSteps[0][0];
   phase.textContent = 'RECON';
+  const progressTimer = window.setInterval(() => {
+    progressIndex = (progressIndex + 1) % progressSteps.length;
+    runButton.querySelector('span').textContent = progressSteps[progressIndex][0];
+    phase.textContent = progressSteps[progressIndex][1];
+  }, 700);
+  const loginUrl = document.querySelector('#login-url').value.trim();
+  const loginUser = document.querySelector('#login-user').value.trim();
+  const loginPassword = document.querySelector('#login-password').value;
+  const targetUrl = document.querySelector('#target').value.trim();
+  const loginValues = [loginUrl, loginUser, loginPassword];
+  const webGoatTarget = targetUrl.includes(':8082') && targetUrl.toLowerCase().includes('/webgoat');
+  if (webGoatTarget && !loginValues.every(Boolean)) {
+    window.clearInterval(progressTimer);
+    runButton.disabled = false;
+    runButton.querySelector('span').textContent = 'Start campaign';
+    phase.textContent = 'BLOCKED';
+    empty.classList.remove('hidden');
+    empty.querySelector('h2').textContent = 'WebGoat login is required';
+    empty.querySelector('p').textContent = 'Fill Login URL, username, and password before scanning WebGoat.';
+    return;
+  }
+  if (loginValues.some(Boolean) && loginValues.some((value) => !value)) {
+    window.clearInterval(progressTimer);
+    runButton.disabled = false;
+    runButton.querySelector('span').textContent = 'Start campaign';
+    phase.textContent = 'BLOCKED';
+    empty.classList.remove('hidden');
+    empty.querySelector('h2').textContent = 'Complete all login fields or leave them empty';
+    empty.querySelector('p').textContent = 'Authenticated scans require Login URL, username, and password.';
+    return;
+  }
+  const login = loginValues.every(Boolean) ? {login_url: loginUrl, username: loginUser, password: loginPassword} : undefined;
   try {
-    const response = await fetch('/api/scans', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({target_url: document.querySelector('#target').value, authorized: document.querySelector('#authorized').checked})});
+    const response = await fetch('/api/scans', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({target_url: targetUrl, authorized: document.querySelector('#authorized').checked, login})});
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || 'Campaign failed');
     renderReport(data);
@@ -24,6 +63,7 @@ form.addEventListener('submit', async (event) => {
     empty.querySelector('h2').textContent = error.message;
     empty.querySelector('p').textContent = 'Check the target and scope confirmation, then try again.';
   } finally {
+    window.clearInterval(progressTimer);
     runButton.disabled = false;
     runButton.querySelector('span').textContent = 'Start campaign';
   }
