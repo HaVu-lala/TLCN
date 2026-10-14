@@ -15,6 +15,10 @@ def test_missing_report_is_not_found():
     assert response.status_code == 404
 
 
+def test_missing_markdown_report_is_not_found():
+    assert TestClient(app).get("/api/scans/missing/report.md").status_code == 404
+
+
 def test_demo_object_changes_by_identifier():
     client = TestClient(app)
     first = client.get("/demo/object?id=1")

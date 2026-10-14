@@ -20,9 +20,7 @@
    and Potential BOLA/IDOR in the local `/demo` fixture.
 
 The expected categories and their source are versioned in
-[`ground_truth.json`](ground_truth.json). The demo is the only target where
-Precision, Recall, and F1 are currently reported. False Positive Rate is marked
-unavailable because the project does not yet include a negative-case dataset.
+[`ground_truth.json`](ground_truth.json). The identified /demo and /demo-safe fixtures provide four positive and four negative cases. See lab_completion.md for the repeated benchmark, scenario matching and FPR. BOLA requires the two fixed X-Lab-User identities.
 
 ## Docker lab experiments
 

@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek-chat"
     deepseek_base_url: str = "https://api.deepseek.com"
+    agent_timeout_seconds: float = 30.0
+    agent_max_tokens: int = 1600
     allowed_target_hosts: str = "localhost,127.0.0.1"
     max_crawl_pages: int = 32
     request_timeout_seconds: float = 8.0

@@ -28,7 +28,7 @@ form.addEventListener('submit', async (event) => {
   const loginPassword = document.querySelector('#login-password').value;
   const targetUrl = document.querySelector('#target').value.trim();
   const loginValues = [loginUrl, loginUser, loginPassword];
-  const webGoatTarget = targetUrl.includes(':8082') && targetUrl.toLowerCase().includes('/webgoat');
+  const webGoatTarget = new URL(targetUrl).pathname.toLowerCase().includes('/webgoat');
   if (webGoatTarget && !loginValues.every(Boolean)) {
     window.clearInterval(progressTimer);
     runButton.disabled = false;
@@ -78,11 +78,11 @@ function renderReport(data) {
   document.querySelector('#ai').textContent = data.used_deepseek ? 'DEEPSEEK' : 'FALLBACK';
   document.querySelector('#f1').textContent = data.evaluation.ground_truth_available ? data.evaluation.f1_score : '-';
   document.querySelector('#summary').textContent = data.agent_summary;
-  document.querySelector('#timing').textContent = `Completed in ${data.duration_ms} ms · Precision ${data.evaluation.precision ?? '-'} · Recall ${data.evaluation.recall ?? '-'}`;
+  document.querySelector('#timing').textContent = `Completed in ${data.duration_ms} ms · Precision ${data.evaluation.precision ?? '-'} · Recall ${data.evaluation.recall ?? '-'} · FPR ${data.evaluation.false_positive_rate ?? '-'} · Checks: ${Object.entries(data.test_timings_ms || {}).map(([name, ms]) => `${name} ${ms} ms`).join(', ')}`;
   document.querySelector('#trace').innerHTML = `<span class="trace-label">AGENT TRACE</span> ${data.agent_trace.map((step) => `<span class="trace-step">${escapeHtml(step.agent)}</span>`).join('<span class="trace-arrow">-&gt;</span>')}`;
   document.querySelector('#download').href = `/api/scans/${encodeURIComponent(data.scan_id)}/report`;
   const list = document.querySelector('#finding-list');
-  list.innerHTML = data.findings.length ? data.findings.map((finding) => `<article class="finding"><div class="finding-head"><span>${escapeHtml(finding.category)}</span><span class="severity">${escapeHtml(finding.severity)}</span></div><p><code>${escapeHtml(finding.parameter || 'response')}</code> at ${escapeHtml(finding.url)}<br>${escapeHtml(finding.evidence)}<br><strong>Remediation:</strong> ${escapeHtml(finding.recommendation)}</p></article>`).join('') : '<article class="finding" style="border-color:#52b788"><div class="finding-head"><span>No confirmed findings</span><span class="severity" style="color:#368f63">CLEAR</span></div><p>Checks completed without a matching response signature.</p></article>';
+  list.innerHTML = data.findings.length ? data.findings.map((finding) => `<article class="finding"><div class="finding-head"><span>${escapeHtml(finding.category)}</span><span class="severity">${escapeHtml(finding.severity)}</span></div><p><code>${escapeHtml(finding.parameter || 'response')}</code> at ${escapeHtml(finding.url)}<br>${escapeHtml(finding.evidence)}<br><strong>Remediation:</strong> ${escapeHtml(finding.recommendation)}</p></article>`).join('') : '<article class="finding" style="border-color:#52b788"><div class="finding-head"><span>No confirmed findings</span><span class="severity" style="color:#368f63">UNCONFIRMED</span></div><p>No matching evidence was confirmed by the selected checks. This does not establish that the application is secure.</p></article>';
 }
 
 async function loadHistory() {

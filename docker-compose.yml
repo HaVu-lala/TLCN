@@ -2,7 +2,7 @@ services:
   sentinel:
     build: .
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
@@ -18,22 +18,30 @@ services:
   juice-shop:
     image: bkimminich/juice-shop:v19.2.0
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
   webgoat:
     image: webgoat/webgoat
+    healthcheck:
+      # The upstream healthcheck requires curl, absent in this image.
+      # TCP readiness here; live-lab scans additionally check HTTP/login.
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 3s
+      start_period: 60s
+      retries: 6
     ports:
-      - "8082:8080"
+      - "127.0.0.1:8082:8080"
 
   mutillidae:
     image: citizenstig/nowasp
     ports:
-      - "8083:80"
+      - "127.0.0.1:8083:80"
 
   bwapp:
     image: raesene/bwapp
     ports:
-      - "8084:80"
+      - "127.0.0.1:8084:80"
 
 volumes:
   sentinel-data:

@@ -9,7 +9,9 @@ API_URL = "http://127.0.0.1:8000"
 def main() -> None:
     response = httpx.post(
         f"{API_URL}/api/scans",
-        json={"target_url": f"{API_URL}/demo", "authorized": True},
+        json={"target_url": f"{API_URL}/demo", "authorized": True,
+              "session_headers": {"X-Lab-User": "user-1"},
+              "comparison_session_headers": {"X-Lab-User": "user-2"}},
         timeout=30,
     )
     response.raise_for_status()

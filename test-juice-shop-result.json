@@ -1,0 +1,166 @@
+{
+  "scan_id": "f5605699-665f-4d0b-b164-c6a36f70b517",
+  "target_url": "http://127.0.0.1:3000/",
+  "pages": [
+    {
+      "url": "http://127.0.0.1:3000",
+      "status": 200,
+      "content_type": "text/html; charset=UTF-8",
+      "forms": [
+        {
+          "action": "http://127.0.0.1:3000/rest/products/search",
+          "method": "GET",
+          "inputs": [
+            {
+              "name": "q",
+              "type": "search"
+            }
+          ],
+          "source": "juice-shop-api-adapter"
+        }
+      ],
+      "endpoints": [],
+      "lab": "juice-shop"
+    }
+  ],
+  "findings": [
+    {
+      "category": "DOM XSS",
+      "severity": "high",
+      "url": "http://127.0.0.1:3000/#/search",
+      "parameter": "q",
+      "evidence": "Chromium executed the unique alert marker supplied through the search URL fragment.",
+      "recommendation": "Avoid rendering untrusted search input as HTML; use safe text bindings."
+    },
+    {
+      "category": "SQL Injection",
+      "severity": "high",
+      "url": "http://127.0.0.1:3000/rest/products/search",
+      "parameter": "q",
+      "evidence": "GET search: baseline and false SQL predicate returned zero products; the paired true predicate returned 46 products. Only product counts are retained.",
+      "recommendation": "Use parameterized queries for the search criteria."
+    }
+  ],
+  "agent_summary": "Completed multi-agent scan on 1 page(s), selected reflected_xss, basic_sqli and recorded 2 finding(s).",
+  "used_deepseek": true,
+  "duration_ms": 6453.09,
+  "test_timings_ms": {
+    "reflected_xss": 4123.6,
+    "basic_sqli": 91.63
+  },
+  "evaluation": {
+    "ground_truth_available": false,
+    "fpr_available": false
+  },
+  "agent_trace": [
+    {
+      "agent": "SessionManager",
+      "status": "completed",
+      "detail": "Session mode: anonymous. Credentials are not persisted.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "ReconAgent",
+      "status": "completed",
+      "detail": "Discovered 1 page(s) and 0 endpoint(s).",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "PlanningAgent",
+      "status": "completed",
+      "detail": "Selected: reflected_xss, basic_sqli.",
+      "mode": "ai",
+      "decision": {
+        "rationale": "The only observed page is the Juice Shop root with a single GET search form at /rest/products/search exposing a 'q' parameter. A reflected parameter like 'q' is the natural candidate for reflected_xss and basic_sqli testing. No authenticated flows, user-generated content submission, or object identifiers are evidenced, so stored_xss and idor lack supporting surface and are excluded.",
+        "tests": [
+          "reflected_xss",
+          "basic_sqli"
+        ]
+      },
+      "decision_reason": "The only observed page is the Juice Shop root with a single GET search form at /rest/products/search exposing a 'q' parameter. A reflected parameter like 'q' is the natural candidate for reflected_xss and basic_sqli testing. No authenticated flows, user-generated content submission, or object identifiers are evidenced, so stored_xss and idor lack supporting surface and are excluded.",
+      "fallback_reason": null,
+      "llm_calls": 1,
+      "llm_usage": {
+        "prompt_tokens": 385,
+        "completion_tokens": 97,
+        "total_tokens": 482
+      },
+      "llm_latency_ms": 1846.3,
+      "llm_cost_usd": 0.0
+    },
+    {
+      "agent": "AttackAgent",
+      "status": "completed",
+      "detail": "Executed 1 generic probes plus lab adapter checks.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "VerificationAgent",
+      "status": "completed",
+      "detail": "Produced 2 candidates before deduplication.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "ReActFeedback",
+      "status": "completed",
+      "detail": "Executed 1 bounded refinement probes.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "ReportingAgent",
+      "status": "completed",
+      "detail": "Generated structured findings and remediation advice.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    }
+  ],
+  "llm_usage": {
+    "prompt_tokens": 385,
+    "completion_tokens": 97,
+    "total_tokens": 482
+  },
+  "llm_calls": 1,
+  "llm_latency_ms": 1846.3,
+  "llm_cost_usd": 0.0
+}

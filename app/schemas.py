@@ -30,6 +30,14 @@ class AgentTrace(BaseModel):
     agent: str
     status: Literal["completed", "skipped", "fallback"]
     detail: str
+    mode: Literal["ai", "fallback", "tool"] = "tool"
+    decision: dict[str, Any] = Field(default_factory=dict)
+    decision_reason: str = ""
+    fallback_reason: str | None = None
+    llm_calls: int = 0
+    llm_usage: dict[str, int] = Field(default_factory=dict)
+    llm_latency_ms: float = 0.0
+    llm_cost_usd: float | None = None
 
 
 class ScanResult(BaseModel):
@@ -40,6 +48,7 @@ class ScanResult(BaseModel):
     agent_summary: str
     used_deepseek: bool
     duration_ms: float
+    test_timings_ms: dict[str, float] = Field(default_factory=dict)
     evaluation: dict[str, Any]
     agent_trace: list[AgentTrace] = Field(default_factory=list)
     llm_usage: dict[str, int] = Field(default_factory=dict)

@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "description": "Versioned ground-truth manifest for authorized local experiments.",
   "fixtures": [
     {
@@ -12,30 +12,93 @@
         "Potential SQL Injection",
         "Potential BOLA/IDOR"
       ],
-      "notes": "Deterministic fixture used for offline Precision, Recall and F1 evaluation."
+      "notes": "Four positive category/route/parameter cases. SQLi is simulated; XSS uses static HTML evidence; BOLA requires X-Lab-User user-1 and user-2 sessions.",
+      "fixture_id": "sentinel-demo-v2"
+    },
+    {
+      "name": "demo-safe",
+      "fixture_id": "sentinel-safe-v2",
+      "target_path": "/demo-safe",
+      "ground_truth_available": true,
+      "expected_findings": [],
+      "negative_categories": [
+        "Reflected XSS",
+        "Stored XSS",
+        "Potential SQL Injection",
+        "Potential BOLA/IDOR"
+      ],
+      "notes": "HTML-escaped search and persisted notes, no SQL errors, object-level owner checks. Four negative cases."
     },
     {
       "name": "juice-shop",
       "target_host": "juice-shop",
       "port": 3000,
-      "ground_truth_available": false,
-      "scenarios": [
-        {"id": "juice-shop-config-01", "category": "Potential Sensitive Configuration Exposure", "oracle": "unauthenticated-200-config", "status": "verified-local-image"},
-        {"id": "juice-shop-authz-01", "category": "Potential BOLA/IDOR", "oracle": "manual-authenticated-comparison", "status": "requires-run"},
-        {"id": "juice-shop-xss-01", "category": "Reflected XSS", "oracle": "manual-response-review", "status": "requires-run"}
+      "ground_truth_available": true,
+      "fixture_id": "juice-shop-v1",
+      "target_path": "/",
+      "expected_findings": [
+        "DOM XSS",
+        "Potential SQL Injection"
       ],
-      "notes": "Run only against the pinned Compose image and record the exact route and reset state before enabling benchmark metrics."
+      "scenarios": [
+        {
+          "id": "juice-shop-xss-01",
+          "category": "DOM XSS",
+          "oracle": "chromium-dialog-marker",
+          "route": "/#/search",
+          "parameter": "q",
+          "status": "verified-local-image"
+        },
+        {
+          "id": "juice-shop-sqli-01",
+          "category": "Potential SQL Injection",
+          "oracle": "error-signature-or-boolean-product-count",
+          "route": "/rest/products/search",
+          "parameter": "q",
+          "status": "verified-local-image"
+        }
+      ],
+      "notes": "Run only against the pinned Compose image (bkimminich/juice-shop:v19.2.0). DOM XSS is confirmed by a unique Chromium alert marker; SQLi by a database-error signature or a true/false product-count pair. Two positive category/route/parameter cases. Scheduled reset is not required for these read-only checks."
     },
     {
       "name": "webgoat",
       "target_host": "webgoat",
       "port": 8082,
-      "ground_truth_available": false,
-      "scenarios": [
-        {"id": "webgoat-sqli-01", "category": "Potential SQL Injection", "oracle": "lesson-confirmation", "status": "requires-run"},
-        {"id": "webgoat-authz-01", "category": "Potential BOLA/IDOR", "oracle": "lesson-confirmation", "status": "requires-run"}
+      "ground_truth_available": true,
+      "fixture_id": "webgoat-v1",
+      "target_path": "/WebGoat/start.mvc",
+      "expected_findings": [
+        "SQL Injection",
+        "Stored XSS",
+        "Potential BOLA/IDOR"
       ],
-      "notes": "Select and record the exact WebGoat lesson path before enabling benchmark metrics."
+      "scenarios": [
+        {
+          "id": "webgoat-sqli-01",
+          "category": "SQL Injection",
+          "oracle": "lesson-confirmation-attack8",
+          "route": "/WebGoat/SqlInjection/attack8",
+          "parameter": "name",
+          "status": "verified-local-image"
+        },
+        {
+          "id": "webgoat-stored-xss-01",
+          "category": "Stored XSS",
+          "oracle": "lesson-confirmation-and-readback",
+          "route": "/WebGoat/CrossSiteScriptingStored/stored-xss",
+          "parameter": "text",
+          "status": "verified-local-image"
+        },
+        {
+          "id": "webgoat-idor-01",
+          "category": "Potential BOLA/IDOR",
+          "oracle": "lesson-confirmation-idor-profile",
+          "route": "/WebGoat/IDOR/profile/{userId}",
+          "parameter": "userId",
+          "status": "verified-local-image"
+        }
+      ],
+      "notes": "Requires a registered lab account and an authenticated session. SQLi, Stored XSS and IDOR are each confirmed by the lesson's own completion oracle. No employee or profile values are retained. Three positive category/route/parameter cases."
     },
     {
       "name": "mutillidae",
@@ -43,8 +106,18 @@
       "port": 8083,
       "ground_truth_available": false,
       "scenarios": [
-        {"id": "mutillidae-xss-01", "category": "Reflected XSS", "oracle": "manual-response-review", "status": "requires-run"},
-        {"id": "mutillidae-sqli-01", "category": "Potential SQL Injection", "oracle": "manual-response-review", "status": "requires-run"}
+        {
+          "id": "mutillidae-xss-01",
+          "category": "Reflected XSS",
+          "oracle": "manual-response-review",
+          "status": "requires-run"
+        },
+        {
+          "id": "mutillidae-sqli-01",
+          "category": "Potential SQL Injection",
+          "oracle": "manual-response-review",
+          "status": "requires-run"
+        }
       ],
       "notes": "Record the selected exercise URL and reset procedure before enabling benchmark metrics."
     },
@@ -54,10 +127,21 @@
       "port": 8084,
       "ground_truth_available": false,
       "scenarios": [
-        {"id": "bwapp-xss-01", "category": "Reflected XSS", "oracle": "manual-response-review", "status": "requires-run"},
-        {"id": "bwapp-sqli-01", "category": "Potential SQL Injection", "oracle": "manual-response-review", "status": "requires-run"}
+        {
+          "id": "bwapp-xss-01",
+          "category": "Reflected XSS",
+          "oracle": "manual-response-review",
+          "status": "requires-run"
+        },
+        {
+          "id": "bwapp-sqli-01",
+          "category": "Potential SQL Injection",
+          "oracle": "manual-response-review",
+          "status": "requires-run"
+        }
       ],
       "notes": "Record the selected exercise URL and reset procedure before enabling benchmark metrics."
     }
   ]
 }
+

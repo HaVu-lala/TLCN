@@ -1,0 +1,248 @@
+{
+  "scan_id": "4109fe4a-1bc8-4bc4-bb23-c63a597b3616",
+  "target_url": "http://127.0.0.1:8082/WebGoat",
+  "pages": [
+    {
+      "url": "http://127.0.0.1:8082/WebGoat/start.mvc",
+      "status": 200,
+      "content_type": "text/html;charset=UTF-8",
+      "forms": [],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
+          "method": "POST",
+          "parameters": [],
+          "source": "webgoat-lab-adapter"
+        }
+      ],
+      "lab": "webgoat"
+    },
+    {
+      "url": "http://127.0.0.1:8082/WebGoat/welcome.mvc",
+      "status": 200,
+      "content_type": "text/html;charset=UTF-8",
+      "forms": [],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
+          "method": "POST",
+          "parameters": [],
+          "source": "webgoat-lab-adapter"
+        }
+      ],
+      "lab": "webgoat"
+    },
+    {
+      "url": "http://127.0.0.1:8082/WebGoat/WebWolf",
+      "status": 0,
+      "error": "Request or redirect is outside the target origin.",
+      "scope_blocked": true,
+      "forms": []
+    },
+    {
+      "url": "http://127.0.0.1:8082/WebGoat/start.mvc?lang=en",
+      "status": 200,
+      "content_type": "text/html;charset=UTF-8",
+      "forms": [],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
+          "method": "POST",
+          "parameters": [],
+          "source": "webgoat-lab-adapter"
+        }
+      ],
+      "lab": "webgoat"
+    },
+    {
+      "url": "http://127.0.0.1:8082/WebGoat/start.mvc?lang=de",
+      "status": 200,
+      "content_type": "text/html;charset=UTF-8",
+      "forms": [],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
+          "method": "POST",
+          "parameters": [],
+          "source": "webgoat-lab-adapter"
+        }
+      ],
+      "lab": "webgoat"
+    },
+    {
+      "url": "http://127.0.0.1:8082/WebGoat/start.mvc?lang=fr",
+      "status": 200,
+      "content_type": "text/html;charset=UTF-8",
+      "forms": [],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
+          "method": "POST",
+          "parameters": [],
+          "source": "webgoat-lab-adapter"
+        }
+      ],
+      "lab": "webgoat"
+    },
+    {
+      "url": "http://127.0.0.1:8082/WebGoat/start.mvc?lang=nl",
+      "status": 200,
+      "content_type": "text/html;charset=UTF-8",
+      "forms": [],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
+          "method": "POST",
+          "parameters": [],
+          "source": "webgoat-lab-adapter"
+        }
+      ],
+      "lab": "webgoat"
+    },
+    {
+      "url": "http://127.0.0.1:8082/WebGoat/start.mvc?lang=es",
+      "status": 200,
+      "content_type": "text/html;charset=UTF-8",
+      "forms": [],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
+          "method": "POST",
+          "parameters": [],
+          "source": "webgoat-lab-adapter"
+        }
+      ],
+      "lab": "webgoat"
+    }
+  ],
+  "findings": [
+    {
+      "category": "SQL Injection",
+      "severity": "high",
+      "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
+      "parameter": "name",
+      "evidence": "POST attack8: benign name did not complete the lesson; a boolean SQL payload completed it and returned an employee table. No employee values are retained in the report.",
+      "recommendation": "Use parameterized queries for name and auth_tan."
+    }
+  ],
+  "agent_summary": "Completed multi-agent scan on 8 page(s), selected basic_sqli and recorded 1 finding(s).",
+  "used_deepseek": true,
+  "duration_ms": 2540.21,
+  "test_timings_ms": {
+    "basic_sqli": 56.83
+  },
+  "evaluation": {
+    "ground_truth_available": false,
+    "fpr_available": false
+  },
+  "agent_trace": [
+    {
+      "agent": "SessionManager",
+      "status": "completed",
+      "detail": "Session mode: authenticated. Credentials are not persisted.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "ReconAgent",
+      "status": "completed",
+      "detail": "Discovered 8 page(s) and 7 endpoint(s).",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "PlanningAgent",
+      "status": "completed",
+      "detail": "Selected: basic_sqli.",
+      "mode": "ai",
+      "decision": {
+        "rationale": "The only concrete endpoint discovered is a POST to /WebGoat/SqlInjection/attack8, which is a SQL injection lesson endpoint. No parameters were enumerated, but the path and method strongly indicate a SQL injection surface, so basic_sqli is the best-supported test. No forms, reflected input fields, stored-content features, or object-id references were observed, so reflected_xss, stored_xss, and idor lack supporting evidence and are excluded.",
+        "tests": [
+          "basic_sqli"
+        ]
+      },
+      "decision_reason": "The only concrete endpoint discovered is a POST to /WebGoat/SqlInjection/attack8, which is a SQL injection lesson endpoint. No parameters were enumerated, but the path and method strongly indicate a SQL injection surface, so basic_sqli is the best-supported test. No forms, reflected input fields, stored-content features, or object-id references were observed, so reflected_xss, stored_xss, and idor lack supporting evidence and are excluded.",
+      "fallback_reason": null,
+      "llm_calls": 1,
+      "llm_usage": {
+        "prompt_tokens": 1010,
+        "completion_tokens": 107,
+        "total_tokens": 1117
+      },
+      "llm_latency_ms": 1779.32,
+      "llm_cost_usd": 0.0
+    },
+    {
+      "agent": "AttackAgent",
+      "status": "completed",
+      "detail": "Executed 0 generic probes plus lab adapter checks.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "VerificationAgent",
+      "status": "completed",
+      "detail": "Produced 1 candidates before deduplication.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "ReActFeedback",
+      "status": "skipped",
+      "detail": "Executed 0 bounded refinement probes.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    },
+    {
+      "agent": "ReportingAgent",
+      "status": "completed",
+      "detail": "Generated structured findings and remediation advice.",
+      "mode": "tool",
+      "decision": {},
+      "decision_reason": "",
+      "fallback_reason": null,
+      "llm_calls": 0,
+      "llm_usage": {},
+      "llm_latency_ms": 0.0,
+      "llm_cost_usd": null
+    }
+  ],
+  "llm_usage": {
+    "prompt_tokens": 1010,
+    "completion_tokens": 107,
+    "total_tokens": 1117
+  },
+  "llm_calls": 1,
+  "llm_latency_ms": 1779.32,
+  "llm_cost_usd": 0.0
+}

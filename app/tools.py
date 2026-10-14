@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 
 from app.config import settings
 from app.schemas import LoginRequest
+from app.scope import ScopeError
 
 
 class WebTools:
@@ -20,13 +21,28 @@ class WebTools:
             timeout=settings.request_timeout_seconds,
             follow_redirects=True,
             headers=session_headers or {},
+            event_hooks={"request": [self._guard_request]},
         )
         if login:
             self._login(login)
 
+    def _guard_request(self, request: httpx.Request) -> None:
+        target = urlparse(self.target_url)
+        candidate = urlparse(str(request.url))
+        if (candidate.scheme, candidate.hostname, candidate.port or (443 if candidate.scheme == "https" else 80)) != (target.scheme, target.hostname, target.port or (443 if target.scheme == "https" else 80)):
+            raise ScopeError("Request or redirect is outside the target origin.")
+
     def _browser_context(self, playwright):
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(extra_http_headers=dict(self.client.headers))
+        def guard_route(route):
+            try:
+                self._guard_request(httpx.Request(route.request.method, route.request.url))
+            except ValueError:
+                route.abort()
+            else:
+                route.continue_()
+        context.route("**/*", guard_route)
         host = urlparse(self.target_url).hostname
         cookies = [
             {"name": name, "value": value, "domain": host, "path": "/"}
@@ -37,15 +53,16 @@ class WebTools:
         return browser, context
 
     def _login(self, login: LoginRequest) -> None:
-        if urlparse(str(login.login_url)).netloc != urlparse(self.target_url).netloc:
-            raise ValueError("Login URL must use the same host as the scan target.")
+        self._guard_request(httpx.Request("POST", str(login.login_url)))
         try:
             login_url = str(login.login_url)
             if "/WebGoat/login" in urlparse(login_url).path:
+                self.client.get(login_url).raise_for_status()
                 response = self.client.post(
                     login_url,
                     data={"username": login.username, "password": login.password},
                 )
+                response.raise_for_status()
                 if "?error" in str(response.url) or urlparse(str(response.url)).path.endswith("/login"):
                     raise ValueError("WebGoat login failed; verify username and password.")
                 self.authentication_status = "authenticated"
@@ -59,7 +76,7 @@ class WebTools:
         except (httpx.HTTPError, ValueError) as exc:
             raise ValueError("Lab login failed; verify the authorized lab credentials and login URL.") from exc
         token = payload.get("authentication", {}).get("token") or payload.get("token")
-        if not token and "authentication" not in payload:
+        if not token:
             raise ValueError("Lab login succeeded without a recognized session token.")
         if token:
             self.client.headers["Authorization"] = f"Bearer {token}"
@@ -77,22 +94,30 @@ class WebTools:
             seen.add(url)
             try:
                 response = self.client.get(url)
+            except ScopeError as exc:
+                pages.append({"url": url, "status": 0, "error": str(exc), "scope_blocked": True, "forms": []})
+                continue
             except httpx.HTTPError as exc:
                 pages.append({"url": url, "status": 0, "error": str(exc), "forms": []})
                 continue
             content_type = response.headers.get("content-type", "")
+            if "/webgoat" in urlparse(self.target_url).path.lower() and urlparse(str(response.url)).path.endswith("/login"):
+                raise ValueError("WebGoat requires a valid lab login or authenticated session cookie.")
             forms = []
             if "html" in content_type:
                 soup = BeautifulSoup(response.text, "html.parser")
                 for form in soup.find_all("form"):
                     inputs = [
-                        {"name": field.get("name"), "type": field.get("type", "text")}
+                        {"name": field.get("name"), "type": field.get("type", "text"), "value": field.get("value", "")}
                         for field in form.find_all(["input", "textarea"])
                         if field.get("name")
                     ]
                     forms.append({"action": urljoin(url, form.get("action") or url), "method": (form.get("method") or "get").upper(), "inputs": inputs})
                 for link in soup.find_all("a", href=True):
                     next_url = urljoin(url, link["href"])
+                    link_path = urlparse(next_url).path.lower()
+                    if any(part in link_path for part in ("logout", "signout", "register", "registration", "/login")):
+                        continue
                     if urlparse(next_url).netloc == base_host:
                         queue.append(next_url)
                 if "OWASP Juice Shop" in response.text and not forms:
@@ -105,7 +130,22 @@ class WebTools:
                         }
                     )
             pages.append({"url": url, "status": response.status_code, "content_type": content_type, "forms": forms, "endpoints": []})
-        if settings.browser_scan_enabled:
+            if '<title>Sentinel Demo Lab</title>' in response.text and urlparse(url).path == "/demo":
+                pages[-1]["fixture_id"] = "sentinel-demo-v2"
+            elif '<title>Sentinel Safe Demo Lab</title>' in response.text and urlparse(url).path == "/demo-safe":
+                pages[-1]["fixture_id"] = "sentinel-safe-v2"
+            if "OWASP Juice Shop" in response.text:
+                pages[-1]["lab"] = "juice-shop"
+            elif "/webgoat" in urlparse(self.target_url).path.lower():
+                pages[-1]["lab"] = "webgoat"
+                # Lesson endpoints are loaded dynamically and are absent from the landing HTML.
+                # Only bounded, oracle-backed lesson routes are advertised so the planner can select them.
+                pages[-1]["endpoints"].extend([
+                    {"url": urljoin(url, "/WebGoat/SqlInjection/attack8"), "method": "POST", "parameters": [], "source": "webgoat-lab-adapter"},
+                    {"url": urljoin(url, "/WebGoat/CrossSiteScriptingStored/stored-xss"), "method": "POST", "parameters": ["text"], "source": "webgoat-lab-adapter"},
+                    {"url": urljoin(url, "/WebGoat/IDOR/profile/2342388"), "method": "GET", "parameters": ["userId"], "source": "webgoat-lab-adapter"},
+                ])
+        if settings.browser_scan_enabled and not any(page.get("lab") for page in pages):
             self._augment_with_browser(pages)
         return pages
 
@@ -167,6 +207,8 @@ class WebTools:
                 )
                 known_urls = {entry["url"] for entry in pages}
                 for route in browser_routes:
+                    if any(part in urlparse(route).path.lower() for part in ("logout", "signout", "register", "registration", "/login")):
+                        continue
                     if len(pages) >= settings.max_crawl_pages or route in known_urls:
                         continue
                     page.goto(route, wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
@@ -240,6 +282,12 @@ class WebTools:
             browser.close()
             return result
 
-    def request(self, url: str, method: str = "GET", params: dict | None = None, data: dict | None = None) -> dict:
-        response = self.client.request(method, url, params=params, data=data)
-        return {"url": str(response.url), "status": response.status_code, "headers": dict(response.headers), "body": response.text[:12000]}
+    def request(self, url: str, method: str = "GET", params: dict | None = None, data=None, headers: dict | None = None) -> dict:
+        self._guard_request(httpx.Request(method, url))
+        try:
+            response = self.client.request(method, url, params=params, data=data, headers=headers)
+        except httpx.HTTPError as exc:
+            return {"url": url, "status": 0, "headers": {}, "body": "", "error": str(exc)}
+        # Keep structured API responses parseable when a probe returns many products.
+        limit = 1_000_000 if "json" in response.headers.get("content-type", "") else 12000
+        return {"url": str(response.url), "status": response.status_code, "headers": dict(response.headers), "body": response.text[:limit]}

@@ -1,0 +1,137 @@
+{
+  "scan_id": "b0179ca6-c3f1-4bce-bdfc-4fe48fdf9983",
+  "target_url": "http://127.0.0.1:8000/demo",
+  "pages": [
+    {
+      "url": "http://127.0.0.1:8000/demo",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "forms": [
+        {
+          "action": "http://127.0.0.1:8000/demo",
+          "method": "GET",
+          "inputs": [
+            {
+              "name": "q",
+              "type": "text",
+              "value": ""
+            }
+          ]
+        },
+        {
+          "action": "http://127.0.0.1:8000/demo/notes",
+          "method": "GET",
+          "inputs": [
+            {
+              "name": "note",
+              "type": "text",
+              "value": ""
+            }
+          ]
+        }
+      ],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:8000/demo",
+          "method": "GET",
+          "parameters": [],
+          "source": "browser-network"
+        }
+      ],
+      "browser_rendered": true
+    }
+  ],
+  "findings": [
+    {
+      "category": "Reflected XSS",
+      "severity": "medium",
+      "url": "http://127.0.0.1:8000/demo?q=%3Cscript%3Ealert%281%29%3C%2Fscript%3E",
+      "parameter": "q",
+      "evidence": "The controlled marker was reflected in the response body.",
+      "recommendation": "Encode output by context and apply a restrictive Content-Security-Policy."
+    },
+    {
+      "category": "Potential SQL Injection",
+      "severity": "high",
+      "url": "http://127.0.0.1:8000/demo?q=%27",
+      "parameter": "q",
+      "evidence": "Database error signature observed: SQL syntax.",
+      "recommendation": "Use parameterized queries and avoid returning database errors to clients."
+    },
+    {
+      "category": "Stored XSS",
+      "severity": "high",
+      "url": "http://127.0.0.1:8000/demo/notes?note=%3Cscript%3Ealert%281%29%3C%2Fscript%3E",
+      "parameter": "note",
+      "evidence": "The controlled marker was persisted and returned by a later response.",
+      "recommendation": "Validate and contextually encode stored content before rendering it. Apply a restrictive Content-Security-Policy."
+    },
+    {
+      "category": "Potential BOLA/IDOR",
+      "severity": "high",
+      "url": "http://127.0.0.1:8000/demo/object?id=2",
+      "parameter": "id",
+      "evidence": "Two object identifiers returned different object data without an authorization context.",
+      "recommendation": "Enforce object-level authorization on every request and verify the resource belongs to the authenticated user."
+    }
+  ],
+  "agent_summary": "Completed multi-agent scan on 1 page(s), selected reflected_xss, stored_xss, basic_sqli, idor and recorded 4 finding(s).",
+  "used_deepseek": true,
+  "duration_ms": 11004.03,
+  "evaluation": {
+    "ground_truth_available": true,
+    "fpr_available": false,
+    "expected_findings": 4,
+    "true_positive": 4,
+    "false_positive": 0,
+    "false_negative": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0
+  },
+  "agent_trace": [
+    {
+      "agent": "SessionManager",
+      "status": "completed",
+      "detail": "Session mode: anonymous. Credentials are not persisted."
+    },
+    {
+      "agent": "ReconAgent",
+      "status": "completed",
+      "detail": "Discovered 1 page(s) and 1 endpoint(s)."
+    },
+    {
+      "agent": "PlanningAgent",
+      "status": "completed",
+      "detail": "Selected: reflected_xss, stored_xss, basic_sqli, idor."
+    },
+    {
+      "agent": "AttackAgent",
+      "status": "completed",
+      "detail": "Executed 5 controlled probe(s)."
+    },
+    {
+      "agent": "VerificationAgent",
+      "status": "completed",
+      "detail": "Verified 4 finding(s)."
+    },
+    {
+      "agent": "ReActFeedback",
+      "status": "skipped",
+      "detail": "Initial observations confirmed the selected checks; no refinement probe was needed."
+    },
+    {
+      "agent": "ReportingAgent",
+      "status": "completed",
+      "detail": "Generated structured findings and remediation advice."
+    }
+  ],
+  "llm_usage": {
+    "prompt_tokens": 295,
+    "completion_tokens": 21,
+    "total_tokens": 316
+  },
+  "llm_calls": 1,
+  "llm_latency_ms": 859.61,
+  "llm_cost_usd": 0.0
+}
