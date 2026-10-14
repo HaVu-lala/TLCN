@@ -136,6 +136,12 @@ class WebTools:
                 pages[-1]["fixture_id"] = "sentinel-safe-v2"
             if "OWASP Juice Shop" in response.text:
                 pages[-1]["lab"] = "juice-shop"
+                # Known oracle-backed Juice Shop surfaces, loaded through the SPA and absent from the shell.
+                # Only bounded routes with a verification oracle are advertised so the planner can select them.
+                pages[-1]["endpoints"].extend([
+                    {"url": urljoin(url, "/rest/products/1/reviews"), "method": "PUT", "parameters": ["message"], "source": "juice-shop-lab-adapter"},
+                    {"url": urljoin(url, "/rest/basket/1"), "method": "GET", "parameters": ["basketId"], "source": "juice-shop-lab-adapter"},
+                ])
             elif "/webgoat" in urlparse(self.target_url).path.lower():
                 pages[-1]["lab"] = "webgoat"
                 # Lesson endpoints are loaded dynamically and are absent from the landing HTML.

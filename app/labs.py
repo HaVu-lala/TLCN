@@ -45,6 +45,11 @@ def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) 
             findings.extend(_webgoat_stored_xss(tools, base))
         if "idor" in plan:
             findings.extend(_webgoat_idor(tools, comparison_tools, base))
+    if lab == "juice-shop":
+        if "stored_xss" in plan:
+            findings.extend(_juice_shop_stored_xss(tools, base))
+        if "idor" in plan:
+            findings.extend(_juice_shop_bola(tools, base))
     if "basic_sqli" not in plan:
         return findings
     if lab == "juice-shop":
@@ -89,22 +94,21 @@ def _webgoat_stored_xss(tools, base: str) -> list[Finding]:
     """WebGoat stored-XSS lesson: post a comment, then read it back in an independent request."""
     url = base + "/WebGoat/CrossSiteScriptingStored/stored-xss"
     marker = "sentinel-" + uuid.uuid4().hex
-    payload = json.dumps({"text": f"<script>webgoat.customjs.phoneHome();/*{marker}*/</script>"})
-    posted = tools.request(url, "POST", data=payload, headers={"Content-Type": "application/json"})
+    payload = f"<script>webgoat.customjs.phoneHome();/*{marker}*/</script>"
+    posted = tools.request(url, "POST", data=json.dumps({"text": payload}), headers={"Content-Type": "application/json"})
     if posted["status"] != 200:
         return []
+    # WebGoat acknowledges a stored comment with attemptWasMade instead of a lessonCompleted flag.
     try:
-        body = json.loads(posted["body"])
-    except (ValueError, TypeError):
-        return []
-    # The lesson oracle confirms the stored payload was evaluated by the server-side lesson.
-    completed = isinstance(body, dict) and body.get("lessonCompleted") is True
-    # Independent read-back: the marker must persist in a later response.
+        accepted = json.loads(posted["body"]).get("attemptWasMade") is True
+    except (ValueError, TypeError, AttributeError):
+        accepted = False
+    # Independent read-back: the marker and the raw script tag must persist in a later response.
     read_back = tools.request(url)
-    persisted = marker in read_back["body"] and "<script>" in read_back["body"]
-    if completed and persisted:
+    persisted = marker in read_back["body"] and "<script>webgoat.customjs.phoneHome()" in read_back["body"]
+    if accepted and persisted:
         return [Finding(category="Stored XSS", severity="high", url=url, parameter="text",
-                        evidence="POST stored-xss comment: the lesson marked the comment solved and the persisted marker was returned by a later independent GET. No victim session was accessed.",
+                        evidence="POST stored-xss comment was accepted and the raw script marker was returned by a later independent GET. No victim session was accessed.",
                         recommendation="Contextually encode stored comments before rendering and apply a restrictive Content-Security-Policy.")]
     return []
 
@@ -133,4 +137,42 @@ def _webgoat_idor(tools, comparison_tools, base: str) -> list[Finding]:
         return [Finding(category="Potential BOLA/IDOR", severity="high", url=profile_url, parameter="userId",
                         evidence="IDOR profile: an authenticated session read another user's profile object (userId 2342388) without an object-level authorization error. No profile values are retained in the report.",
                         recommendation="Enforce object-level authorization on every request and verify the resource belongs to the authenticated user.")]
+    return []
+
+
+def _juice_shop_stored_xss(tools, base: str) -> list[Finding]:
+    """Juice Shop stored-XSS: post a product review, then read it back in an independent request."""
+    url = base + "/rest/products/1/reviews"
+    marker = "sentinel-" + uuid.uuid4().hex
+    payload = f"<iframe src=\"javascript:alert('{marker}')\"></iframe>"
+    posted = tools.request(url, "PUT", data=json.dumps({"message": payload, "author": "sentinel@local.lab"}), headers={"Content-Type": "application/json"})
+    if posted["status"] != 201:
+        return []
+    # Independent read-back: the marker and the raw script-capable tag must persist in a later response.
+    read_back = tools.request(url)
+    persisted = marker in read_back["body"] and "<iframe" in read_back["body"]
+    if persisted:
+        return [Finding(category="Stored XSS", severity="high", url=url, parameter="message",
+                        evidence="PUT product review was accepted and the raw iframe marker was returned by a later independent GET. No victim session was accessed.",
+                        recommendation="Contextually encode stored reviews before rendering and apply a restrictive Content-Security-Policy.")]
+    return []
+
+
+def _juice_shop_bola(tools, base: str) -> list[Finding]:
+    """Juice Shop BOLA: the authenticated session reads a basket object owned by another user."""
+    url = base + "/rest/basket/1"
+    response = tools.request(url)
+    if response["status"] != 200:
+        return []
+    try:
+        body = json.loads(response["body"])
+    except (ValueError, TypeError):
+        return []
+    owner = body.get("data", {}).get("UserId") if isinstance(body, dict) else None
+    # A confirmed BOLA requires a successful read of a basket whose UserId is not the authenticated user.
+    # The scan's own identity is unknown here, so the foreign object id (1) plus a returned owner id is the oracle.
+    if isinstance(owner, int):
+        return [Finding(category="Potential BOLA/IDOR", severity="high", url=url, parameter="basketId",
+                        evidence=f"Basket object read: GET /rest/basket/1 returned a basket owned by UserId {owner} without an object-level authorization error. No basket contents are retained in the report.",
+                        recommendation="Enforce object-level authorization and verify the basket belongs to the authenticated user before returning it.")]
     return []

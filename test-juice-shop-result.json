@@ -1,5 +1,5 @@
 {
-  "scan_id": "f5605699-665f-4d0b-b164-c6a36f70b517",
+  "scan_id": "ed0378e8-2720-4b86-947e-1525b2027204",
   "target_url": "http://127.0.0.1:3000/",
   "pages": [
     {
@@ -19,7 +19,24 @@
           "source": "juice-shop-api-adapter"
         }
       ],
-      "endpoints": [],
+      "endpoints": [
+        {
+          "url": "http://127.0.0.1:3000/rest/products/1/reviews",
+          "method": "PUT",
+          "parameters": [
+            "message"
+          ],
+          "source": "juice-shop-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:3000/rest/basket/1",
+          "method": "GET",
+          "parameters": [
+            "basketId"
+          ],
+          "source": "juice-shop-lab-adapter"
+        }
+      ],
       "lab": "juice-shop"
     }
   ],
@@ -33,30 +50,78 @@
       "recommendation": "Avoid rendering untrusted search input as HTML; use safe text bindings."
     },
     {
+      "category": "Stored XSS",
+      "severity": "high",
+      "url": "http://127.0.0.1:3000/rest/products/1/reviews",
+      "parameter": "message",
+      "evidence": "PUT product review was accepted and the raw iframe marker was returned by a later independent GET. No victim session was accessed.",
+      "recommendation": "Contextually encode stored reviews before rendering and apply a restrictive Content-Security-Policy."
+    },
+    {
       "category": "SQL Injection",
       "severity": "high",
       "url": "http://127.0.0.1:3000/rest/products/search",
       "parameter": "q",
       "evidence": "GET search: baseline and false SQL predicate returned zero products; the paired true predicate returned 46 products. Only product counts are retained.",
       "recommendation": "Use parameterized queries for the search criteria."
+    },
+    {
+      "category": "Potential BOLA/IDOR",
+      "severity": "high",
+      "url": "http://127.0.0.1:3000/rest/basket/1",
+      "parameter": "basketId",
+      "evidence": "Basket object read: GET /rest/basket/1 returned a basket owned by UserId 1 without an object-level authorization error. No basket contents are retained in the report.",
+      "recommendation": "Enforce object-level authorization and verify the basket belongs to the authenticated user before returning it."
     }
   ],
-  "agent_summary": "Completed multi-agent scan on 1 page(s), selected reflected_xss, basic_sqli and recorded 2 finding(s).",
+  "agent_summary": "Completed multi-agent scan on 1 page(s), selected reflected_xss, stored_xss, basic_sqli, idor and recorded 4 finding(s).",
   "used_deepseek": true,
-  "duration_ms": 6453.09,
+  "duration_ms": 6717.05,
   "test_timings_ms": {
-    "reflected_xss": 4123.6,
-    "basic_sqli": 91.63
+    "reflected_xss": 3866.9,
+    "stored_xss": 17.82,
+    "basic_sqli": 246.62,
+    "idor": 44.57
   },
   "evaluation": {
-    "ground_truth_available": false,
-    "fpr_available": false
+    "true_positive": 0,
+    "false_positive": 0,
+    "false_negative": 2,
+    "true_negative": 0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "fpr_available": false,
+    "false_positive_rate": null,
+    "ground_truth_available": true,
+    "fixture_id": "juice-shop-v1",
+    "manifest_version": "2.0",
+    "expected_findings": 2,
+    "scenarios": [
+      {
+        "id": "juice-shop-xss-01",
+        "category": "DOM XSS",
+        "expected_positive": true,
+        "detected": false,
+        "outcome": "FN"
+      },
+      {
+        "id": "juice-shop-sqli-01",
+        "category": "Potential SQL Injection",
+        "expected_positive": true,
+        "detected": false,
+        "outcome": "FN"
+      }
+    ],
+    "unmatched_findings": 4,
+    "measurement_unit": "category + route prefix + parameter; duplicate evidence counts once",
+    "note": "Precision/Recall cover only the pinned, oracle-backed scenarios listed here."
   },
   "agent_trace": [
     {
       "agent": "SessionManager",
       "status": "completed",
-      "detail": "Session mode: anonymous. Credentials are not persisted.",
+      "detail": "Session mode: authenticated. Credentials are not persisted.",
       "mode": "tool",
       "decision": {},
       "decision_reason": "",
@@ -69,7 +134,7 @@
     {
       "agent": "ReconAgent",
       "status": "completed",
-      "detail": "Discovered 1 page(s) and 0 endpoint(s).",
+      "detail": "Discovered 1 page(s) and 2 endpoint(s).",
       "mode": "tool",
       "decision": {},
       "decision_reason": "",
@@ -82,30 +147,32 @@
     {
       "agent": "PlanningAgent",
       "status": "completed",
-      "detail": "Selected: reflected_xss, basic_sqli.",
+      "detail": "Selected: reflected_xss, stored_xss, basic_sqli, idor.",
       "mode": "ai",
       "decision": {
-        "rationale": "The only observed page is the Juice Shop root with a single GET search form at /rest/products/search exposing a 'q' parameter. A reflected parameter like 'q' is the natural candidate for reflected_xss and basic_sqli testing. No authenticated flows, user-generated content submission, or object identifiers are evidenced, so stored_xss and idor lack supporting surface and are excluded.",
+        "rationale": "The crawl found a search form (GET /rest/products/search with q) which is a classic reflected XSS and SQLi surface, plus a PUT reviews endpoint (message) suitable for stored XSS testing, and a basket endpoint with a basketId parameter that is a natural IDOR candidate. These four allowed tests map directly onto the discovered inputs, so I select all of them.",
         "tests": [
           "reflected_xss",
-          "basic_sqli"
+          "stored_xss",
+          "basic_sqli",
+          "idor"
         ]
       },
-      "decision_reason": "The only observed page is the Juice Shop root with a single GET search form at /rest/products/search exposing a 'q' parameter. A reflected parameter like 'q' is the natural candidate for reflected_xss and basic_sqli testing. No authenticated flows, user-generated content submission, or object identifiers are evidenced, so stored_xss and idor lack supporting surface and are excluded.",
+      "decision_reason": "The crawl found a search form (GET /rest/products/search with q) which is a classic reflected XSS and SQLi surface, plus a PUT reviews endpoint (message) suitable for stored XSS testing, and a basket endpoint with a basketId parameter that is a natural IDOR candidate. These four allowed tests map directly onto the discovered inputs, so I select all of them.",
       "fallback_reason": null,
       "llm_calls": 1,
       "llm_usage": {
-        "prompt_tokens": 385,
-        "completion_tokens": 97,
-        "total_tokens": 482
+        "prompt_tokens": 460,
+        "completion_tokens": 106,
+        "total_tokens": 566
       },
-      "llm_latency_ms": 1846.3,
+      "llm_latency_ms": 1836.19,
       "llm_cost_usd": 0.0
     },
     {
       "agent": "AttackAgent",
       "status": "completed",
-      "detail": "Executed 1 generic probes plus lab adapter checks.",
+      "detail": "Executed 5 generic probes plus lab adapter checks.",
       "mode": "tool",
       "decision": {},
       "decision_reason": "",
@@ -118,7 +185,7 @@
     {
       "agent": "VerificationAgent",
       "status": "completed",
-      "detail": "Produced 2 candidates before deduplication.",
+      "detail": "Produced 4 candidates before deduplication.",
       "mode": "tool",
       "decision": {},
       "decision_reason": "",
@@ -156,11 +223,11 @@
     }
   ],
   "llm_usage": {
-    "prompt_tokens": 385,
-    "completion_tokens": 97,
-    "total_tokens": 482
+    "prompt_tokens": 460,
+    "completion_tokens": 106,
+    "total_tokens": 566
   },
   "llm_calls": 1,
-  "llm_latency_ms": 1846.3,
+  "llm_latency_ms": 1836.19,
   "llm_cost_usd": 0.0
 }

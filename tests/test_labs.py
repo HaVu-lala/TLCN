@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -100,16 +102,16 @@ def test_webgoat_crawl_advertises_oracle_backed_lesson_endpoints(monkeypatch):
     assert {"SqlInjection/attack8", "CrossSiteScriptingStored/stored-xss", "IDOR/profile/2342388"} <= endpoints
 
 
-def test_webgoat_stored_xss_requires_lesson_confirmation_and_readback(monkeypatch):
+def test_webgoat_stored_xss_requires_acceptance_and_readback(monkeypatch):
     stored = {"body": ""}
 
     def handler(request):
         if request.url.path.endswith("start.mvc"):
             return httpx.Response(200, text="WebGoat", headers={"content-type": "text/html"})
         if request.method == "POST":
-            stored["body"] = request.content.decode()
-            return httpx.Response(200, json={"lessonCompleted": True})
-        return httpx.Response(200, json={"text": stored["body"]}, headers={"content-type": "application/json"})
+            stored["body"] = json.loads(request.content.decode())["text"]
+            return httpx.Response(200, json={"attemptWasMade": True})
+        return httpx.Response(200, json=[{"user": "guest", "text": stored["body"]}], headers={"content-type": "application/json"})
     tools = lab_tools(monkeypatch, "http://webgoat:8080/WebGoat", handler)
     findings = check_lab(tools, tools.crawl(), ["stored_xss"])
     assert [f.category for f in findings] == ["Stored XSS"]
@@ -121,8 +123,8 @@ def test_webgoat_stored_xss_not_reported_without_readback(monkeypatch):
         if request.url.path.endswith("start.mvc"):
             return httpx.Response(200, text="WebGoat", headers={"content-type": "text/html"})
         if request.method == "POST":
-            return httpx.Response(200, json={"lessonCompleted": True})
-        return httpx.Response(200, json={"text": "no marker"}, headers={"content-type": "application/json"})
+            return httpx.Response(200, json={"attemptWasMade": True})
+        return httpx.Response(200, json=[{"user": "guest", "text": "no marker"}], headers={"content-type": "application/json"})
     tools = lab_tools(monkeypatch, "http://webgoat:8080/WebGoat", handler)
     assert check_lab(tools, tools.crawl(), ["stored_xss"]) == []
 
@@ -148,5 +150,60 @@ def test_webgoat_idor_requires_authenticated_owner(monkeypatch):
             return httpx.Response(200, json={"lessonCompleted": False})
         return httpx.Response(200, json={"lessonCompleted": True})
     tools = lab_tools(monkeypatch, "http://webgoat:8080/WebGoat", handler)
+    assert check_lab(tools, tools.crawl(), ["idor"]) == []
+
+
+def test_juice_shop_crawl_advertises_reviews_and_basket_endpoints(monkeypatch):
+    def handler(request):
+        return httpx.Response(200, text="<title>OWASP Juice Shop</title>", headers={"content-type": "text/html"})
+    tools = lab_tools(monkeypatch, "http://juice-shop:3000", handler)
+    endpoints = {e["url"].rsplit("/rest/", 1)[-1] for page in tools.crawl() for e in page.get("endpoints", [])}
+    assert {"products/1/reviews", "basket/1"} <= endpoints
+
+
+def test_juice_shop_stored_xss_requires_readback(monkeypatch):
+    stored = {"body": ""}
+
+    def handler(request):
+        if request.url.path == "/":
+            return httpx.Response(200, text="<title>OWASP Juice Shop</title>", headers={"content-type": "text/html"})
+        if request.method == "PUT":
+            stored["body"] = json.loads(request.content.decode())["message"]
+            return httpx.Response(201, json={"status": "success"})
+        return httpx.Response(200, json=[{"message": stored["body"]}], headers={"content-type": "application/json"})
+    tools = lab_tools(monkeypatch, "http://juice-shop:3000", handler)
+    findings = check_lab(tools, tools.crawl(), ["stored_xss"])
+    assert [f.category for f in findings] == ["Stored XSS"]
+    assert findings[0].parameter == "message"
+
+
+def test_juice_shop_stored_xss_not_reported_without_readback(monkeypatch):
+    def handler(request):
+        if request.url.path == "/":
+            return httpx.Response(200, text="<title>OWASP Juice Shop</title>", headers={"content-type": "text/html"})
+        if request.method == "PUT":
+            return httpx.Response(201, json={"status": "success"})
+        return httpx.Response(200, json=[{"message": "no marker"}], headers={"content-type": "application/json"})
+    tools = lab_tools(monkeypatch, "http://juice-shop:3000", handler)
+    assert check_lab(tools, tools.crawl(), ["stored_xss"]) == []
+
+
+def test_juice_shop_bola_confirms_foreign_basket(monkeypatch):
+    def handler(request):
+        if request.url.path == "/":
+            return httpx.Response(200, text="<title>OWASP Juice Shop</title>", headers={"content-type": "text/html"})
+        return httpx.Response(200, json={"status": "success", "data": {"id": 1, "UserId": 1, "Products": []}})
+    tools = lab_tools(monkeypatch, "http://juice-shop:3000", handler)
+    findings = check_lab(tools, tools.crawl(), ["idor"])
+    assert [f.category for f in findings] == ["Potential BOLA/IDOR"]
+    assert findings[0].parameter == "basketId"
+
+
+def test_juice_shop_bola_requires_owner_object(monkeypatch):
+    def handler(request):
+        if request.url.path == "/":
+            return httpx.Response(200, text="<title>OWASP Juice Shop</title>", headers={"content-type": "text/html"})
+        return httpx.Response(401, json={"status": "error"})
+    tools = lab_tools(monkeypatch, "http://juice-shop:3000", handler)
     assert check_lab(tools, tools.crawl(), ["idor"]) == []
 

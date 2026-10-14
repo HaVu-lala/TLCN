@@ -1,5 +1,5 @@
 {
-  "scan_id": "4109fe4a-1bc8-4bc4-bb23-c63a597b3616",
+  "scan_id": "cabdbdcc-d53a-430b-b3b6-6bb25e7b833a",
   "target_url": "http://127.0.0.1:8082/WebGoat",
   "pages": [
     {
@@ -12,6 +12,22 @@
           "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
           "method": "POST",
           "parameters": [],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss",
+          "method": "POST",
+          "parameters": [
+            "text"
+          ],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388",
+          "method": "GET",
+          "parameters": [
+            "userId"
+          ],
           "source": "webgoat-lab-adapter"
         }
       ],
@@ -27,6 +43,22 @@
           "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
           "method": "POST",
           "parameters": [],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss",
+          "method": "POST",
+          "parameters": [
+            "text"
+          ],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388",
+          "method": "GET",
+          "parameters": [
+            "userId"
+          ],
           "source": "webgoat-lab-adapter"
         }
       ],
@@ -50,6 +82,22 @@
           "method": "POST",
           "parameters": [],
           "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss",
+          "method": "POST",
+          "parameters": [
+            "text"
+          ],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388",
+          "method": "GET",
+          "parameters": [
+            "userId"
+          ],
+          "source": "webgoat-lab-adapter"
         }
       ],
       "lab": "webgoat"
@@ -64,6 +112,22 @@
           "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
           "method": "POST",
           "parameters": [],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss",
+          "method": "POST",
+          "parameters": [
+            "text"
+          ],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388",
+          "method": "GET",
+          "parameters": [
+            "userId"
+          ],
           "source": "webgoat-lab-adapter"
         }
       ],
@@ -80,6 +144,22 @@
           "method": "POST",
           "parameters": [],
           "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss",
+          "method": "POST",
+          "parameters": [
+            "text"
+          ],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388",
+          "method": "GET",
+          "parameters": [
+            "userId"
+          ],
+          "source": "webgoat-lab-adapter"
         }
       ],
       "lab": "webgoat"
@@ -94,6 +174,22 @@
           "url": "http://127.0.0.1:8082/WebGoat/SqlInjection/attack8",
           "method": "POST",
           "parameters": [],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss",
+          "method": "POST",
+          "parameters": [
+            "text"
+          ],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388",
+          "method": "GET",
+          "parameters": [
+            "userId"
+          ],
           "source": "webgoat-lab-adapter"
         }
       ],
@@ -110,6 +206,22 @@
           "method": "POST",
           "parameters": [],
           "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss",
+          "method": "POST",
+          "parameters": [
+            "text"
+          ],
+          "source": "webgoat-lab-adapter"
+        },
+        {
+          "url": "http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388",
+          "method": "GET",
+          "parameters": [
+            "userId"
+          ],
+          "source": "webgoat-lab-adapter"
         }
       ],
       "lab": "webgoat"
@@ -123,17 +235,72 @@
       "parameter": "name",
       "evidence": "POST attack8: benign name did not complete the lesson; a boolean SQL payload completed it and returned an employee table. No employee values are retained in the report.",
       "recommendation": "Use parameterized queries for name and auth_tan."
+    },
+    {
+      "category": "Stored XSS",
+      "severity": "high",
+      "url": "http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss",
+      "parameter": "text",
+      "evidence": "POST stored-xss comment was accepted and the raw script marker was returned by a later independent GET. No victim session was accessed.",
+      "recommendation": "Contextually encode stored comments before rendering and apply a restrictive Content-Security-Policy."
+    },
+    {
+      "category": "Potential BOLA/IDOR",
+      "severity": "high",
+      "url": "http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388",
+      "parameter": "userId",
+      "evidence": "IDOR profile: an authenticated session read another user's profile object (userId 2342388) without an object-level authorization error. No profile values are retained in the report.",
+      "recommendation": "Enforce object-level authorization on every request and verify the resource belongs to the authenticated user."
     }
   ],
-  "agent_summary": "Completed multi-agent scan on 8 page(s), selected basic_sqli and recorded 1 finding(s).",
+  "agent_summary": "Completed multi-agent scan on 8 page(s), selected basic_sqli, stored_xss, idor and recorded 3 finding(s).",
   "used_deepseek": true,
-  "duration_ms": 2540.21,
+  "duration_ms": 2568.89,
   "test_timings_ms": {
-    "basic_sqli": 56.83
+    "basic_sqli": 474.07,
+    "stored_xss": 20.78,
+    "idor": 21.67
   },
   "evaluation": {
-    "ground_truth_available": false,
-    "fpr_available": false
+    "true_positive": 3,
+    "false_positive": 0,
+    "false_negative": 0,
+    "true_negative": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "fpr_available": false,
+    "false_positive_rate": null,
+    "ground_truth_available": true,
+    "fixture_id": "webgoat-v1",
+    "manifest_version": "2.0",
+    "expected_findings": 3,
+    "scenarios": [
+      {
+        "id": "webgoat-sqli-01",
+        "category": "SQL Injection",
+        "expected_positive": true,
+        "detected": true,
+        "outcome": "TP"
+      },
+      {
+        "id": "webgoat-stored-xss-01",
+        "category": "Stored XSS",
+        "expected_positive": true,
+        "detected": true,
+        "outcome": "TP"
+      },
+      {
+        "id": "webgoat-idor-01",
+        "category": "Potential BOLA/IDOR",
+        "expected_positive": true,
+        "detected": true,
+        "outcome": "TP"
+      }
+    ],
+    "unmatched_findings": 0,
+    "measurement_unit": "category + route prefix + parameter; duplicate evidence counts once",
+    "note": "Precision/Recall cover only the pinned, oracle-backed scenarios listed here."
   },
   "agent_trace": [
     {
@@ -152,7 +319,7 @@
     {
       "agent": "ReconAgent",
       "status": "completed",
-      "detail": "Discovered 8 page(s) and 7 endpoint(s).",
+      "detail": "Discovered 8 page(s) and 21 endpoint(s).",
       "mode": "tool",
       "decision": {},
       "decision_reason": "",
@@ -165,29 +332,31 @@
     {
       "agent": "PlanningAgent",
       "status": "completed",
-      "detail": "Selected: basic_sqli.",
+      "detail": "Selected: basic_sqli, stored_xss, idor.",
       "mode": "ai",
       "decision": {
-        "rationale": "The only concrete endpoint discovered is a POST to /WebGoat/SqlInjection/attack8, which is a SQL injection lesson endpoint. No parameters were enumerated, but the path and method strongly indicate a SQL injection surface, so basic_sqli is the best-supported test. No forms, reflected input fields, stored-content features, or object-id references were observed, so reflected_xss, stored_xss, and idor lack supporting evidence and are excluded.",
+        "rationale": "The crawl of the local WebGoat lab surfaced three distinct injectable endpoints: a POST SQL injection endpoint (SqlInjection/attack8), a POST stored-XSS endpoint (CrossSiteScriptingStored/stored-xss with a 'text' parameter), and a GET IDOR endpoint (IDOR/profile/2342388 with a 'userId' parameter). Each maps directly to an allowed test, so I will exercise all three. No reflected-XSS endpoint or parameter was observed in the crawl, so reflected_xss is omitted to avoid inventing endpoints.",
         "tests": [
-          "basic_sqli"
+          "basic_sqli",
+          "stored_xss",
+          "idor"
         ]
       },
-      "decision_reason": "The only concrete endpoint discovered is a POST to /WebGoat/SqlInjection/attack8, which is a SQL injection lesson endpoint. No parameters were enumerated, but the path and method strongly indicate a SQL injection surface, so basic_sqli is the best-supported test. No forms, reflected input fields, stored-content features, or object-id references were observed, so reflected_xss, stored_xss, and idor lack supporting evidence and are excluded.",
+      "decision_reason": "The crawl of the local WebGoat lab surfaced three distinct injectable endpoints: a POST SQL injection endpoint (SqlInjection/attack8), a POST stored-XSS endpoint (CrossSiteScriptingStored/stored-xss with a 'text' parameter), and a GET IDOR endpoint (IDOR/profile/2342388 with a 'userId' parameter). Each maps directly to an allowed test, so I will exercise all three. No reflected-XSS endpoint or parameter was observed in the crawl, so reflected_xss is omitted to avoid inventing endpoints.",
       "fallback_reason": null,
       "llm_calls": 1,
       "llm_usage": {
-        "prompt_tokens": 1010,
-        "completion_tokens": 107,
-        "total_tokens": 1117
+        "prompt_tokens": 1619,
+        "completion_tokens": 137,
+        "total_tokens": 1756
       },
-      "llm_latency_ms": 1779.32,
+      "llm_latency_ms": 1490.78,
       "llm_cost_usd": 0.0
     },
     {
       "agent": "AttackAgent",
       "status": "completed",
-      "detail": "Executed 0 generic probes plus lab adapter checks.",
+      "detail": "Executed 14 generic probes plus lab adapter checks.",
       "mode": "tool",
       "decision": {},
       "decision_reason": "",
@@ -200,7 +369,7 @@
     {
       "agent": "VerificationAgent",
       "status": "completed",
-      "detail": "Produced 1 candidates before deduplication.",
+      "detail": "Produced 3 candidates before deduplication.",
       "mode": "tool",
       "decision": {},
       "decision_reason": "",
@@ -238,11 +407,11 @@
     }
   ],
   "llm_usage": {
-    "prompt_tokens": 1010,
-    "completion_tokens": 107,
-    "total_tokens": 1117
+    "prompt_tokens": 1619,
+    "completion_tokens": 137,
+    "total_tokens": 1756
   },
   "llm_calls": 1,
-  "llm_latency_ms": 1779.32,
+  "llm_latency_ms": 1490.78,
   "llm_cost_usd": 0.0
 }

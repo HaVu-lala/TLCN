@@ -20,8 +20,16 @@ def main():
         registration.raise_for_status()
         if "start.mvc" not in str(registration.url):
             raise RuntimeError("WebGoat lab account registration failed")
+        # Juice Shop needs its own account for the stored-XSS review and basket BOLA scenarios.
+        juice_email, juice_password = f"sentinel{secrets.token_hex(3)}@local.lab", "A" + secrets.token_hex(3) + "!a1"
+        juice_registration = client.post("http://127.0.0.1:3000/api/Users/", json={
+            "email": juice_email, "password": juice_password, "passwordRepeat": juice_password,
+        })
+        juice_registration.raise_for_status()
         for name, target, login in (
-            ("juice-shop", "http://127.0.0.1:3000/", None),
+            ("juice-shop", "http://127.0.0.1:3000/", {
+                "login_url": "http://127.0.0.1:3000/rest/user/login", "username": juice_email, "password": juice_password,
+            }),
             ("webgoat", "http://127.0.0.1:8082/WebGoat", {
                 "login_url": "http://127.0.0.1:8082/WebGoat/login", "username": username, "password": password,
             }),
