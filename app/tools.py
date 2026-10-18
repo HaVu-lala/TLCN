@@ -129,11 +129,17 @@ class WebTools:
                             "source": "juice-shop-api-adapter",
                         }
                     )
-            pages.append({"url": url, "status": response.status_code, "content_type": content_type, "forms": forms, "endpoints": []})
+            pages.append({"url": url, "status": response.status_code, "content_type": content_type,
+                           "headers": dict(response.headers), "body": response.text[:8000],
+                           "forms": forms, "endpoints": []})
             if '<title>Sentinel Demo Lab</title>' in response.text and urlparse(url).path == "/demo":
                 pages[-1]["fixture_id"] = "sentinel-demo-v2"
             elif '<title>Sentinel Safe Demo Lab</title>' in response.text and urlparse(url).path == "/demo-safe":
                 pages[-1]["fixture_id"] = "sentinel-safe-v2"
+            if pages[-1].get("fixture_id"):
+                # Advertise the object endpoint so an agent can test object-level authorization (BOLA/IDOR).
+                pages[-1]["endpoints"].append({"url": url.rstrip("/") + "/object", "method": "GET",
+                                               "parameters": ["id"], "source": "sentinel-demo-adapter"})
             if "OWASP Juice Shop" in response.text:
                 pages[-1]["lab"] = "juice-shop"
                 # Known oracle-backed Juice Shop surfaces, loaded through the SPA and absent from the shell.

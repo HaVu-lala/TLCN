@@ -1,11 +1,30 @@
 {
-  "scan_id": "ed0378e8-2720-4b86-947e-1525b2027204",
+  "scan_id": "9b604e73-29c0-4df7-86d1-395423e1662f",
   "target_url": "http://127.0.0.1:3000/",
   "pages": [
     {
       "url": "http://127.0.0.1:3000",
       "status": 200,
       "content_type": "text/html; charset=UTF-8",
+      "headers": {
+        "access-control-allow-origin": "*",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "SAMEORIGIN",
+        "feature-policy": "payment 'self'",
+        "x-recruiting": "/#/jobs",
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=0",
+        "last-modified": "Sun, 18 Oct 2026 14:45:20 GMT",
+        "etag": "W/\"124fa-1a14f796eb3\"",
+        "content-type": "text/html; charset=UTF-8",
+        "vary": "Accept-Encoding",
+        "content-encoding": "gzip",
+        "date": "Sun, 18 Oct 2026 17:41:52 GMT",
+        "connection": "keep-alive",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "body": "<!--\n  ~ Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.\n  ~ SPDX-License-Identifier: MIT\n  -->\n\n<!doctype html>\n<html lang=\"en\" data-beasties-container>\n<head>\n  <meta charset=\"utf-8\">\n  <title>OWASP Juice Shop</title>\n  <meta name=\"description\" content=\"Probably the most modern and sophisticated insecure web application\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <link id=\"favicon\" rel=\"icon\" type=\"image/x-icon\" href=\"assets/public/favicon_js.ico\">\n  <script>\n    window.addEventListener(\"load\", function(){\n      window.cookieconsent.initialise({\n        \"palette\": {\n          \"popup\": { \"background\": \"var(--theme-primary)\", \"text\": \"var(--theme-text)\" },\n          \"button\": { \"background\": \"var(--theme-accent)\", \"text\": \"var(--theme-text)\" }\n        },\n        \"theme\": \"classic\",\n        \"position\": \"bottom-right\",\n        \"content\": { \"message\": \"This website uses fruit cookies to ensure you get the juiciest tracking experience.\", \"dismiss\": \"Me want it!\", \"link\": \"But me wait!\", \"href\": \"https://www.youtube.com/watch?v=9PnbKL3wuH4\" }\n      })});\n  </script>\n<style>html{--mat-sys-on-surface:initial}.mat-app-background{background-color:var(--mat-app-background-color, var(--mat-sys-background, transparent));color:var(--mat-app-text-color, var(--mat-sys-on-background, inherit))}.mat-typography{font:400 14px/20px Roboto,sans-serif;letter-spacing:.0178571429em}html{--mat-tooltip-supporting-text-font:Roboto, sans-serif;--mat-tooltip-supporting-text-size:12px;--mat-tooltip-supporting-text-weight:400;--mat-tooltip-supporting-text-tracking:.0333333333em}html{--mat-app-background-color:#fafafa;--mat-app-text-color:rgba(0, 0, 0, .87);--mat-app-elevation-shadow-level-0:0px 0px 0px 0px rgba(0, 0, 0, .2), 0px 0px 0px 0px rgba(0, 0, 0, .14), 0px 0px 0px 0px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-1:0px 2px 1px -1px rgba(0, 0, 0, .2), 0px 1px 1px 0px rgba(0, 0, 0, .14), 0px 1px 3px 0px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-2:0px 3px 1px -2px rgba(0, 0, 0, .2), 0px 2px 2px 0px rgba(0, 0, 0, .14), 0px 1px 5px 0px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-3:0px 3px 3px -2px rgba(0, 0, 0, .2), 0px 3px 4px 0px rgba(0, 0, 0, .14), 0px 1px 8px 0px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-4:0px 2px 4px -1px rgba(0, 0, 0, .2), 0px 4px 5px 0px rgba(0, 0, 0, .14), 0px 1px 10px 0px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-5:0px 3px 5px -1px rgba(0, 0, 0, .2), 0px 5px 8px 0px rgba(0, 0, 0, .14), 0px 1px 14px 0px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-6:0px 3px 5px -1px rgba(0, 0, 0, .2), 0px 6px 10px 0px rgba(0, 0, 0, .14), 0px 1px 18px 0px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-7:0px 4px 5px -2px rgba(0, 0, 0, .2), 0px 7px 10px 1px rgba(0, 0, 0, .14), 0px 2px 16px 1px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-8:0px 5px 5px -3px rgba(0, 0, 0, .2), 0px 8px 10px 1px rgba(0, 0, 0, .14), 0px 3px 14px 2px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-9:0px 5px 6px -3px rgba(0, 0, 0, .2), 0px 9px 12px 1px rgba(0, 0, 0, .14), 0px 3px 16px 2px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-10:0px 6px 6px -3px rgba(0, 0, 0, .2), 0px 10px 14px 1px rgba(0, 0, 0, .14), 0px 4px 18px 3px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-11:0px 6px 7px -4px rgba(0, 0, 0, .2), 0px 11px 15px 1px rgba(0, 0, 0, .14), 0px 4px 20px 3px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-12:0px 7px 8px -4px rgba(0, 0, 0, .2), 0px 12px 17px 2px rgba(0, 0, 0, .14), 0px 5px 22px 4px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-13:0px 7px 8px -4px rgba(0, 0, 0, .2), 0px 13px 19px 2px rgba(0, 0, 0, .14), 0px 5px 24px 4px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-14:0px 7px 9px -4px rgba(0, 0, 0, .2), 0px 14px 21px 2px rgba(0, 0, 0, .14), 0px 5px 26px 4px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-15:0px 8px 9px -5px rgba(0, 0, 0, .2), 0px 15px 22px 2px rgba(0, 0, 0, .14), 0px 6px 28px 5px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-16:0px 8px 10px -5px rgba(0, 0, 0, .2), 0px 16px 24px 2px rgba(0, 0, 0, .14), 0px 6px 30px 5px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-17:0px 8px 11px -5px rgba(0, 0, 0, .2), 0px 17px 26px 2px rgba(0, 0, 0, .14), 0px 6px 32px 5px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-18:0px 9px 11px -5px rgba(0, 0, 0, .2), 0px 18px 28px 2px rgba(0, 0, 0, .14), 0px 7px 34px 6px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-19:0px 9px 12px -6px rgba(0, 0, 0, .2), 0px 19px 29px 2px rgba(0, 0, 0, .14), 0px 7px 36px 6px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-20:0px 10px 13px -6px rgba(0, 0, 0, .2), 0px 20px 31px 3px rgba(0, 0, 0, .14), 0px 8px 38px 7px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-21:0px 10px 13px -6px rgba(0, 0, 0, .2), 0px 21px 33px 3px rgba(0, 0, 0, .14), 0px 8px 40px 7px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-22:0px 10px 14px -6px rgba(0, 0, 0, .2), 0px 22px 35px 3px rgba(0, 0, 0, .14), 0px 8px 42px 7px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-23:0px 11px 14px -7px rgba(0, 0, 0, .2), 0px 23px 36px 3px rgba(0, 0, 0, .14), 0px 9px 44px 8px rgba(0, 0, 0, .12);--mat-app-elevation-shadow-level-24:0px 11px 15px -7px rgba(0, 0, 0, .2), 0px 24px 38px 3px rgba(0, 0, 0, .14), 0px 9px 46px 8px rgba(0, 0, 0, .12)}html{--mat-ripple-color:color-mix(in srgb, rgba(0, 0, 0, .87) 12%, transparent)}html{--mat-option-selected-state-label-text-color:#673ab7;--mat-option-label-text-color:rgba(0, 0, 0, .87);--mat-option-hover-state-layer-color:color-mix(in srgb, rgba(0, 0, 0, .87) 4%, transparent);--mat-option-focus-state-layer-color:color-mix(in srgb, rgba(0, 0, 0, .87) 12%, transparent);--mat-option-selected-state-layer-color:color-mix(in srgb, rgba(0, 0, 0, .87) 12%, transparent)}html{--mat-optgroup-label-text-color:rgba(0, 0, 0, .87)}html{--mat-pseudo-checkbox-full-selected-icon-color:#ffa000;--mat-pseudo-checkbox-full-selected-checkmark-color:#fafafa;--mat-pseudo-checkbox-full-unselected-icon-color:rgba(0, 0, 0, .54);--mat-pseudo-checkbox-full-disabled-selected-checkmark-color:#fafafa;--mat-pseudo-checkbox-full-disabled-unselected-icon-color:color-mix(in srgb, rgba(0, 0, 0, .87) 38%, transparent);--mat-pseudo-checkbox-full-disabled-selected-icon-color:color-mix(in srgb, rgba(0, 0, 0, .87) 38%, transparent);--mat-pseudo-checkbox-minimal-selected-checkmark-color:#ffa000;--mat-pseudo-checkbox-minimal-disabled-selected-checkmark-color:color-mix(in srgb, rgba(0, 0, 0, .87) 38%, transparent)}html{--mat-card-elevated-container-shape:4px;--mat-card-outlined-container-shape:4px;--mat-card-filled-container-shape:4px;--mat-card-outlined-outline-width:1px}html{--mat-card-elevated-container-color:white;--mat-card-elevated-container-elevation:0px 2px 1px -1px rgba(0, 0, 0, .2), 0px 1px 1px 0px rgba(0, 0, 0, .14), 0px 1px 3px 0px rgba(0, 0, 0, .12);--mat-card-outlined-container-color:white;--mat-card-outlined-container-elevation:0px 0px 0px 0px rgba(0, 0, 0, .2), 0px 0px 0px 0px rgba(0, 0, 0, .14), 0px 0px 0px 0px rgba(0, 0, 0, .12);--mat-card-outlined-outline-color:rgba(0, 0, 0, .12);--mat-card-subtitle-text-color:rgba(0, 0, 0, .54);--mat-card-filled-container-color:white;--mat-card-filled-container-elevation:0px 0px 0px 0px rgba(0, 0, 0, .2), 0px 0px 0px 0px rgba(0, 0, 0, .14), 0px 0px 0px 0px rgba(0, 0, 0, .12)}html{--mat-progress-bar-active-indicator-height:4px;--mat-progress-bar-track-height:4px;--mat-progress-bar-track-shape:0}html{--mat-tooltip-container-shape:4px;--mat-tooltip-supporting-text-line-height:16px}html{--mat-tooltip-container-color:#424242;--mat-tooltip-supporting-text-color:white}html{--mat-form-field-filled-active-indicator-height:1px;--mat-form-field-filled-focus-active-indicator-height:2px;--mat-form-field-filled-container-shape:4px;--mat-form-field-outlined-outline-width:1px;--mat-form-field-outlined-focus-outline-width:2px;--mat-form-field-outlined-container-shape:4px}html{--mat-form-field-focus-select-arrow-",
       "forms": [
         {
           "action": "http://127.0.0.1:3000/rest/products/search",
@@ -58,6 +77,14 @@
       "recommendation": "Contextually encode stored reviews before rendering and apply a restrictive Content-Security-Policy."
     },
     {
+      "category": "Potential BOLA/IDOR",
+      "severity": "high",
+      "url": "http://127.0.0.1:3000/rest/basket/1",
+      "parameter": "basketId",
+      "evidence": "Basket object read: GET /rest/basket/1 returned a basket owned by UserId 1 without an object-level authorization error. No basket contents are retained in the report.",
+      "recommendation": "Enforce object-level authorization and verify the basket belongs to the authenticated user before returning it."
+    },
+    {
       "category": "SQL Injection",
       "severity": "high",
       "url": "http://127.0.0.1:3000/rest/products/search",
@@ -66,22 +93,19 @@
       "recommendation": "Use parameterized queries for the search criteria."
     },
     {
-      "category": "Potential BOLA/IDOR",
-      "severity": "high",
-      "url": "http://127.0.0.1:3000/rest/basket/1",
-      "parameter": "basketId",
-      "evidence": "Basket object read: GET /rest/basket/1 returned a basket owned by UserId 1 without an object-level authorization error. No basket contents are retained in the report.",
-      "recommendation": "Enforce object-level authorization and verify the basket belongs to the authenticated user before returning it."
+      "category": "Security Misconfiguration",
+      "severity": "medium",
+      "url": "http://127.0.0.1:3000",
+      "parameter": null,
+      "evidence": "The HTML response is missing security response headers: Content-Security-Policy.",
+      "recommendation": "Set Content-Security-Policy, X-Frame-Options and X-Content-Type-Options on application responses."
     }
   ],
-  "agent_summary": "Completed multi-agent scan on 1 page(s), selected reflected_xss, stored_xss, basic_sqli, idor and recorded 4 finding(s).",
+  "agent_summary": "Autonomous tool-calling scan confirmed 5 finding(s) via 6 reasoning step(s).",
   "used_deepseek": true,
-  "duration_ms": 6717.05,
+  "duration_ms": 19331.05,
   "test_timings_ms": {
-    "reflected_xss": 3866.9,
-    "stored_xss": 17.82,
-    "basic_sqli": 246.62,
-    "idor": 44.57
+    "function_calling": 18741.41
   },
   "evaluation": {
     "true_positive": 0,
@@ -113,7 +137,7 @@
         "outcome": "FN"
       }
     ],
-    "unmatched_findings": 4,
+    "unmatched_findings": 5,
     "measurement_unit": "category + route prefix + parameter; duplicate evidence counts once",
     "note": "Precision/Recall cover only the pinned, oracle-backed scenarios listed here."
   },
@@ -132,86 +156,26 @@
       "llm_cost_usd": null
     },
     {
-      "agent": "ReconAgent",
+      "agent": "ToolCallingAgent",
       "status": "completed",
-      "detail": "Discovered 1 page(s) and 2 endpoint(s).",
-      "mode": "tool",
-      "decision": {},
-      "decision_reason": "",
-      "fallback_reason": null,
-      "llm_calls": 0,
-      "llm_usage": {},
-      "llm_latency_ms": 0.0,
-      "llm_cost_usd": null
-    },
-    {
-      "agent": "PlanningAgent",
-      "status": "completed",
-      "detail": "Selected: reflected_xss, stored_xss, basic_sqli, idor.",
+      "detail": "ReAct tool-calling completed in 6 LLM step(s) and 12 tool call(s).",
       "mode": "ai",
-      "decision": {
-        "rationale": "The crawl found a search form (GET /rest/products/search with q) which is a classic reflected XSS and SQLi surface, plus a PUT reviews endpoint (message) suitable for stored XSS testing, and a basket endpoint with a basketId parameter that is a natural IDOR candidate. These four allowed tests map directly onto the discovered inputs, so I select all of them.",
-        "tests": [
-          "reflected_xss",
-          "stored_xss",
-          "basic_sqli",
-          "idor"
-        ]
-      },
-      "decision_reason": "The crawl found a search form (GET /rest/products/search with q) which is a classic reflected XSS and SQLi surface, plus a PUT reviews endpoint (message) suitable for stored XSS testing, and a basket endpoint with a basketId parameter that is a natural IDOR candidate. These four allowed tests map directly onto the discovered inputs, so I select all of them.",
+      "decision": {},
+      "decision_reason": "",
       "fallback_reason": null,
-      "llm_calls": 1,
+      "llm_calls": 6,
       "llm_usage": {
-        "prompt_tokens": 460,
-        "completion_tokens": 106,
-        "total_tokens": 566
+        "prompt_tokens": 17639,
+        "completion_tokens": 1954,
+        "total_tokens": 19593
       },
-      "llm_latency_ms": 1836.19,
-      "llm_cost_usd": 0.0
-    },
-    {
-      "agent": "AttackAgent",
-      "status": "completed",
-      "detail": "Executed 5 generic probes plus lab adapter checks.",
-      "mode": "tool",
-      "decision": {},
-      "decision_reason": "",
-      "fallback_reason": null,
-      "llm_calls": 0,
-      "llm_usage": {},
-      "llm_latency_ms": 0.0,
-      "llm_cost_usd": null
-    },
-    {
-      "agent": "VerificationAgent",
-      "status": "completed",
-      "detail": "Produced 4 candidates before deduplication.",
-      "mode": "tool",
-      "decision": {},
-      "decision_reason": "",
-      "fallback_reason": null,
-      "llm_calls": 0,
-      "llm_usage": {},
-      "llm_latency_ms": 0.0,
-      "llm_cost_usd": null
-    },
-    {
-      "agent": "ReActFeedback",
-      "status": "completed",
-      "detail": "Executed 1 bounded refinement probes.",
-      "mode": "tool",
-      "decision": {},
-      "decision_reason": "",
-      "fallback_reason": null,
-      "llm_calls": 0,
-      "llm_usage": {},
-      "llm_latency_ms": 0.0,
+      "llm_latency_ms": 13670.380000000001,
       "llm_cost_usd": null
     },
     {
       "agent": "ReportingAgent",
       "status": "completed",
-      "detail": "Generated structured findings and remediation advice.",
+      "detail": "Aggregated confirmed findings and remediation advice.",
       "mode": "tool",
       "decision": {},
       "decision_reason": "",
@@ -223,11 +187,11 @@
     }
   ],
   "llm_usage": {
-    "prompt_tokens": 460,
-    "completion_tokens": 106,
-    "total_tokens": 566
+    "prompt_tokens": 17639,
+    "completion_tokens": 1954,
+    "total_tokens": 19593
   },
-  "llm_calls": 1,
-  "llm_latency_ms": 1836.19,
-  "llm_cost_usd": 0.0
+  "llm_calls": 6,
+  "llm_latency_ms": 13670.380000000001,
+  "llm_cost_usd": null
 }

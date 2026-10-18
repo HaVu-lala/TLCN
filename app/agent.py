@@ -8,7 +8,9 @@ from bs4 import BeautifulSoup
 
 from app.schemas import AgentTrace, Finding, LoginRequest
 from app.tools import WebTools
-from app.labs import check_lab
+from app.labs import check_lab, extended_lab_checks
+from app.passive import passive_findings
+from app.auth_checks import check_authentication
 from app.reasoning import ReasoningAgent, PlanDecision, ALLOWED_TESTS, public_url, page_context
 
 
@@ -192,7 +194,42 @@ class PentestAgent:
         self.llm_cost_usd: float | None = None
         self.authentication_status = tools.authentication_status
 
+    def _function_calling_enabled(self) -> bool:
+        from app.config import settings
+        return bool(settings.deepseek_api_key) and settings.agent_mode in ("auto", "function_calling")
+
     def run(self) -> tuple[str, list[dict], list[Finding]]:
+        if self._function_calling_enabled():
+            try:
+                return self._run_function_calling()
+            except Exception as exc:  # noqa: BLE001 - any orchestration error falls back safely
+                self.trace.append(AgentTrace(agent="Orchestrator", status="fallback", detail=f"Function-calling failed ({type(exc).__name__}); using deterministic pipeline."))
+        return self._run_deterministic()
+
+    def _run_function_calling(self) -> tuple[str, list[dict], list[Finding]]:
+        from time import perf_counter as _perf
+        from app.toolbox import ToolBox, ToolCallingAgent
+        self.trace.append(AgentTrace(agent="SessionManager", status="completed", detail=f"Session mode: {self.authentication_status}. Credentials are not persisted."))
+        toolbox = ToolBox(self.recon.tools, comparison_tools=self.attack.comparison_tools)
+        orchestrator = ToolCallingAgent(self.target_url, toolbox)
+        started = _perf()
+        findings = orchestrator.run()
+        if not toolbox.pages:
+            toolbox.pages = self.recon.tools.crawl()
+        self.test_timings_ms = {"function_calling": round((_perf() - started) * 1000, 2)}
+        self.used_deepseek = orchestrator.llm_calls > 0
+        self.llm_calls = orchestrator.llm_calls
+        self.llm_usage = orchestrator.llm_usage
+        self.llm_latency_ms = orchestrator.llm_latency_ms
+        self.llm_cost_usd = orchestrator.llm_cost_usd
+        self.trace.append(AgentTrace(agent="ToolCallingAgent", status="completed", detail=orchestrator.trace_detail,
+                                     mode="ai", llm_calls=self.llm_calls, llm_usage=self.llm_usage,
+                                     llm_latency_ms=self.llm_latency_ms, llm_cost_usd=self.llm_cost_usd))
+        self.summary = f"Autonomous tool-calling scan confirmed {len(findings)} finding(s) via {orchestrator.steps} reasoning step(s)."
+        self.trace.append(AgentTrace(agent=self.reporter.name, status="completed", detail="Aggregated confirmed findings and remediation advice."))
+        return str(uuid.uuid4()), toolbox.pages, findings
+
+    def _run_deterministic(self) -> tuple[str, list[dict], list[Finding]]:
         self.trace.append(AgentTrace(agent="SessionManager", status="completed", detail=f"Session mode: {self.authentication_status}. Credentials are not persisted."))
         pages = self.recon.run()
         endpoint_count = sum(len(page.get("endpoints", [])) for page in pages)
@@ -223,6 +260,15 @@ class PentestAgent:
         self.trace.append(AgentTrace(agent=self.attack.name, status="completed", detail=f"Executed {probe_count} generic probes plus lab adapter checks."))
         self.trace.append(AgentTrace(agent=self.verifier.name, status="completed", detail=f"Produced {len(findings)} candidates before deduplication."))
         self.trace.append(AgentTrace(agent="ReActFeedback", status="completed" if refinement_count else "skipped", detail=f"Executed {refinement_count} bounded refinement probes."))
+        extended_started = perf_counter()
+        passive = passive_findings(pages, self.target_url)
+        auth = check_authentication(self.recon.tools, pages)
+        lab_extra = extended_lab_checks(self.recon.tools, pages)
+        findings.extend(passive)
+        findings.extend(auth)
+        findings.extend(lab_extra)
+        self.test_timings_ms["owasp_extended"] = round((perf_counter() - extended_started) * 1000, 2)
+        self.trace.append(AgentTrace(agent="ExtendedDetectors", status="completed" if (passive or auth or lab_extra) else "skipped", detail=f"OWASP 2025 passive, authentication and lab checks produced {len(passive) + len(auth) + len(lab_extra)} candidate(s)."))
         findings = list({(item.category, item.url, item.parameter): item for item in findings}.values())
         self.summary = self.reporter.run(len(pages), plan, findings)
         self.trace.append(AgentTrace(agent=self.reporter.name, status="completed", detail="Generated structured findings and remediation advice."))

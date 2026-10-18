@@ -176,3 +176,82 @@ def _juice_shop_bola(tools, base: str) -> list[Finding]:
                         evidence=f"Basket object read: GET /rest/basket/1 returned a basket owned by UserId {owner} without an object-level authorization error. No basket contents are retained in the report.",
                         recommendation="Enforce object-level authorization and verify the basket belongs to the authenticated user before returning it.")]
     return []
+
+
+def extended_lab_checks(tools, pages: list[dict]) -> list[Finding]:
+    """Additional OWASP Top 10:2025 scenarios verified to exist in the pinned labs.
+
+    Kept separate from check_lab so the core-oracle unit tests are unaffected.
+    Juice Shop: A07 Authentication Failures (no lockout on the REST login) and
+    A02 Security Misconfiguration (exposed /ftp directory listing). All checks are
+    read-only or bounded and run only against the recognized lab.
+    """
+    findings: list[Finding] = []
+    lab = next((page.get("lab") for page in pages if page.get("lab")), None)
+    base = "/".join(tools.target_url.split("/", 3)[:3])
+    if lab == "juice-shop":
+        findings.extend(_juice_shop_auth_failures(tools, base))
+        findings.extend(_juice_shop_exposed_ftp(tools, base))
+    if lab == "webgoat":
+        findings.extend(_webgoat_auth_failures(tools, base))
+        findings.extend(_webgoat_actuator_exposure(tools, base))
+    return findings
+
+
+def _webgoat_auth_failures(tools, base: str) -> list[Finding]:
+    """A07: repeated failed WebGoat logins return to login?error and are never locked out."""
+    url = base + "/WebGoat/login"
+    failures = 0
+    for index in range(5):
+        response = tools.request(url, "POST", data={"username": f"sentinel-nouser-{index}", "password": "sentinel-wrong"})
+        final = response.get("url", "")
+        locked = response["status"] in (429, 423) or "too many" in response.get("body", "").lower()
+        if locked:
+            return []
+        if "/login" in final and "error" in final:
+            failures += 1
+    if failures == 5:
+        return [Finding(category="Authentication Failures", severity="medium", url=url, parameter="password",
+                        evidence="5 consecutive failed logins all returned to /login?error and were never rate-limited or locked out.",
+                        recommendation="Apply rate limiting, account lockout or CAPTCHA after repeated authentication failures.")]
+    return []
+
+
+def _webgoat_actuator_exposure(tools, base: str) -> list[Finding]:
+    """A02: the Spring Boot Actuator /actuator/env endpoint is exposed without authentication."""
+    url = base + "/WebGoat/actuator/env"
+    response = tools.request(url)
+    if response["status"] == 200 and "propertySources" in response.get("body", "") and "activeProfiles" in response.get("body", ""):
+        return [Finding(category="Security Misconfiguration", severity="medium", url=url, parameter=None,
+                        evidence="The Spring Boot Actuator endpoint /actuator/env was reachable without authentication and disclosed application environment and property sources.",
+                        recommendation="Restrict or disable Actuator endpoints in production and require authentication for management endpoints.")]
+    return []
+
+
+def _juice_shop_auth_failures(tools, base: str) -> list[Finding]:
+    """A07: the REST login rejects wrong credentials but never rate-limits or locks out."""
+    url = base + "/rest/user/login"
+    statuses = []
+    for index in range(5):
+        response = tools.request(url, "POST",
+                                 data=json.dumps({"email": f"sentinel-nouser-{index}@local.lab", "password": "sentinel-wrong"}),
+                                 headers={"Content-Type": "application/json"})
+        statuses.append(response["status"])
+    # Confirm this really is an authentication endpoint (wrong creds are rejected)
+    # before concluding that the absence of a lockout is a weakness.
+    if statuses and statuses[0] in (401, 403) and all(status in (401, 403) for status in statuses):
+        return [Finding(category="Authentication Failures", severity="medium", url=url, parameter="password",
+                        evidence=f"{len(statuses)} consecutive failed REST logins were all rejected with {statuses[0]} and never rate-limited or locked out (statuses {statuses}).",
+                        recommendation="Apply rate limiting, account lockout or CAPTCHA after repeated authentication failures.")]
+    return []
+
+
+def _juice_shop_exposed_ftp(tools, base: str) -> list[Finding]:
+    """A02: the /ftp path returns a browsable directory listing without authentication."""
+    response = tools.request(base + "/ftp")
+    body = response.get("body", "")
+    if response["status"] == 200 and ("acquisition" in body.lower() or "index of /ftp" in body.lower() or "coupons" in body.lower()):
+        return [Finding(category="Security Misconfiguration", severity="medium", url=base + "/ftp", parameter=None,
+                        evidence="The /ftp path returned a browsable directory listing of server files without authentication.",
+                        recommendation="Disable directory listing and block access to internal file paths such as /ftp.")]
+    return []

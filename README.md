@@ -1,95 +1,112 @@
-# Sentinel Web Pentest Agent
+# Sentinel — Hệ thống kiểm thử xâm nhập ứng dụng web dùng AI Agent
 
-## Giới thiệu
+## 1. Dự án này làm gì
 
-Đây là đồ án tiểu luận chuyên ngành với đề tài **Kiểm thử xâm nhập ứng dụng web sử dụng AI Agent**. Hệ thống mô phỏng một pentester ảo, có khả năng thu thập thông tin, lập kế hoạch kiểm thử, thực hiện các phép kiểm tra an toàn và tổng hợp báo cáo.
+Sentinel là đồ án tiểu luận chuyên ngành: một **AI Pentest Agent** mô phỏng chuyên gia kiểm thử xâm nhập (pentester) cho ứng dụng web. Hệ thống tự động:
 
-Agent sử dụng vòng lặp ReAct có giới hạn:
+1. **Thu thập thông tin (Recon):** crawl các trang cùng host, bóc tách form/input/endpoint, render được cả input sinh bởi JavaScript (SPA) nhờ Playwright.
+2. **Lập kế hoạch (Planning):** dùng mô hình DeepSeek để suy luận, hoặc kế hoạch dự phòng khi không có API key.
+3. **Tấn công có kiểm soát (Action):** chèn payload không phá hoại để kiểm tra lỗ hổng.
+4. **Xác thực (Verification):** chỉ ghi nhận lỗ hổng khi có **bằng chứng thực tế** từ phản hồi máy chủ (oracle tất định), không dựa trên phán đoán của mô hình.
+5. **Báo cáo (Reporting):** xuất báo cáo JSON, HTML, Markdown và **HTML tiếng Việt** kèm PoC và khuyến nghị.
 
-1. **Reconnaissance:** Crawl các trang cùng host và thu thập biểu mẫu HTML.
-2. **Planning:** Sử dụng DeepSeek để chọn kế hoạch kiểm thử hoặc dùng kế hoạch dự phòng khi chưa có API key.
-3. **Action:** Kiểm tra Reflected XSS, Stored XSS, SQL Injection và BOLA/IDOR bằng payload kiểm soát, không phá hoại.
-4. **Reporting:** Ghi nhận URL, tham số, bằng chứng, mức độ nghiêm trọng và khuyến nghị xử lý.
+Toàn bộ chỉ chạy trong môi trường lab **được cấp phép** (localhost/loopback/IP nội bộ/host lab cấu hình sẵn).
 
-## Chức năng chính
+## 2. Hai chế độ vận hành (`AGENT_MODE`)
 
-- Scope Guard giới hạn mục tiêu trong localhost, loopback, IP nội bộ hoặc host lab được cấu hình.
-- Crawler phát hiện URL và form nhập liệu, có thể render input sinh bởi JavaScript bằng Playwright.
-- Adapter nhận diện Juice Shop SPA và kiểm tra API search `/rest/products/search?q=...` khi trang không có HTML form.
-- Kiến trúc Multi-Agent gồm Recon, Planning, Attack, Verification và Reporting Agent.
-- Agent planner tích hợp DeepSeek API, có fallback offline.
-- Phát hiện cơ bản Reflected XSS, Stored XSS và SQL Injection.
-- Kiểm tra BOLA/IDOR bằng so sánh quyền truy cập object từ hai session lab.
-- Lưu lịch sử campaign bằng SQLite.
-- Xuất báo cáo JSON, HTML và Markdown.
-- Tính Precision, Recall, F1-Score, TP, FP, FN, TN và FPR trên lab demo dương/âm; đo thời gian từng nhóm kiểm thử.
-- Dashboard web để khởi chạy campaign và xem finding.
+- **`function_calling` — AI chỉ gọi tool:** khi có `DEEPSEEK_API_KEY`, LLM tự chủ chọn và gọi từng tool qua cơ chế function-calling theo vòng lặp ReAct. LLM **không** trực tiếp gửi gói tin; mọi hành động mạng do mã Python thực thi dưới Scope Guard; việc xác nhận lỗ hổng do oracle tất định quyết định.
+- **`deterministic` — pipeline tất định (dự phòng):** chạy pipeline đa agent cố định (Recon → Planning → Attack → Verification → Reporting), kết quả **tái lập được**, nhanh, không tốn token.
+- **`auto` (mặc định):** có key thì dùng function-calling, không thì dùng deterministic; function-calling lỗi sẽ tự lùi về deterministic.
 
-## Chạy local
+> Khuyến nghị: số liệu trích dẫn (luận văn) nên lấy từ chế độ **deterministic** cho ổn định; function-calling dùng để minh hoạ tính tự chủ của AI (có đánh đổi: chậm hơn, tốn token, dao động theo lần chạy).
+
+## 3. Bộ 9 tool mà AI có thể gọi
+
+| Tool | Vai trò | Nhóm OWASP 2025 |
+| --- | --- | --- |
+| `reconnaissance` | Crawl URL, phân tích HTML form, bóc input/endpoint | — |
+| `http_request` | Gửi GET/POST, quản lý Cookie/Authorization, scope guard | — |
+| `inject_payload` | Chèn payload + baseline để so sánh | A05 |
+| `verify_vulnerability` | Oracle tất định: phân tích sai biệt mã trạng thái & response body | A05/A01 |
+| `generate_report` | Tổng hợp finding, trích request/response làm PoC | — |
+| `audit_response_security` | Kiểm thụ động header/cookie/version | A02, A03, A04 |
+| `test_authentication` | Kiểm đăng nhập yếu (default creds, không khóa) | A07 |
+| `test_object_authorization` | So sánh 2 phiên để phát hiện BOLA/IDOR | A01 |
+| `run_lab_checks` | Chạy oracle riêng của Juice Shop/WebGoat | A05/A01/A02/A07 |
+
+5 tool đầu là bộ lõi theo đề cương (Tool 1–5); 4 tool sau mở rộng để phủ thêm OWASP Top 10:2025.
+
+## 4. Các lỗ hổng phát hiện được
+
+- **A01 Broken Access Control:** BOLA/IDOR (so sánh 2 phiên).
+- **A02 Security Misconfiguration:** thiếu security headers (CSP/X-Frame-Options/X-Content-Type-Options), lộ stack trace, lộ thư mục/endpoint nhạy cảm (`/ftp`, Spring Actuator `/actuator/env`).
+- **A03 Software Supply Chain:** lộ phiên bản thành phần qua header.
+- **A04 Cryptographic Failures:** cookie thiếu Secure/HttpOnly/SameSite, thiếu HSTS.
+- **A05 Injection:** SQL Injection, Reflected XSS, Stored XSS, DOM XSS (Juice Shop, oracle Chromium).
+- **A07 Authentication Failures:** chấp nhận credential mặc định, không khóa tài khoản sau nhiều lần sai.
+
+### 6 kịch bản quét được trên CẢ Juice Shop và WebGoat
+
+| # | Kịch bản | OWASP 2025 | Juice Shop | WebGoat |
+| --- | --- | --- | --- | --- |
+| 1 | SQL Injection | A05 | product search | SqlInjection/attack8 |
+| 2 | Stored XSS | A05 | product review | stored-xss lesson |
+| 3 | BOLA/IDOR | A01 | /rest/basket/1 | IDOR/profile |
+| 4 | Security Misconfiguration (thiếu header) | A02 | thiếu CSP | thiếu CSP/XFO/XCTO |
+| 5 | Lộ endpoint/file nhạy cảm | A02 | `/ftp` listing | `/actuator/env` |
+| 6 | Authentication Failures (không khóa) | A07 | `/rest/user/login` | `/WebGoat/login` |
+
+Kết quả quét thực tế (deterministic): **Juice Shop 7 lỗ hổng** (6 kịch bản trên + DOM XSS), **WebGoat 6 lỗ hổng**.
+
+## 5. Cài đặt & chạy local
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m playwright install chromium
+python -m playwright install chromium        # cần cho DOM XSS / SPA
 Copy-Item .env.example .env
 uvicorn app.main:app --reload
 ```
 
-Mở http://127.0.0.1:8000. Dashboard mặc định sử dụng lab offline tại `http://127.0.0.1:8000/demo`. Lab này cố ý có dữ liệu phản chiếu, dữ liệu lưu trữ không an toàn và lỗi SQL mô phỏng để Agent tạo finding mà không cần API key.
+Mở **http://127.0.0.1:8000**. Dashboard mặc định quét lab offline `http://127.0.0.1:8000/demo` (không cần API key). Lịch sử lưu tại `data/sentinel.sqlite3`.
 
-Lịch sử scan được lưu tại `data/sentinel.sqlite3`. Chỉ kiểm thử những hệ thống thuộc quyền sở hữu hoặc có sự cho phép bằng văn bản.
-
-## Cấu hình DeepSeek
-
-`DEEPSEEK_API_KEY` là tùy chọn. Khi chưa có key, hệ thống dùng kế hoạch cố định và vẫn chạy offline.
-
-Khi có key, cấu hình trong file `.env`:
+## 6. Cấu hình DeepSeek (`.env`)
 
 ```env
-DEEPSEEK_API_KEY=your_key_here
+DEEPSEEK_API_KEY=your_key_here          # để trống = chạy deterministic offline
 DEEPSEEK_MODEL=deepseek-chat
 DEEPSEEK_BASE_URL=https://api.deepseek.com
+AGENT_MODE=auto                          # auto | function_calling | deterministic
 DEEPSEEK_INPUT_COST_PER_MILLION=0
 DEEPSEEK_OUTPUT_COST_PER_MILLION=0
 ```
 
-DeepSeek chỉ tham gia lựa chọn phép kiểm tra. Kết quả scan lưu số lần gọi, token usage, thời gian gọi và chi phí ước tính theo đơn giá cấu hình. Việc gửi HTTP vẫn được thực hiện bởi code deterministic và chịu kiểm soát scope.
+Mỗi lần quét ghi lại số lần gọi LLM, token, độ trễ và chi phí ước tính theo đơn giá cấu hình.
 
-## Chạy bằng Docker
+## 7. Chạy lab thật bằng Docker
 
 ```powershell
-docker compose up --build
+docker compose up -d juice-shop webgoat       # labs: 3000 và 8082
+uvicorn app.main:app --reload                 # app Sentinel ở 8000
 ```
 
-Mở http://127.0.0.1:8000. Môi trường Docker cung cấp nhiều ứng dụng web lab:
-
-- OWASP Juice Shop: http://127.0.0.1:3000
-- OWASP WebGoat: http://127.0.0.1:8082/WebGoat
-- OWASP Mutillidae II: http://127.0.0.1:8083
-- bWAPP: http://127.0.0.1:8084
-
-Khi Sentinel chạy trong Docker, có thể dùng hostname nội bộ `juice-shop`, `webgoat`, `mutillidae` và `bwapp` để tránh phụ thuộc vào localhost của container. WebGoat cung cấp bài học có hướng dẫn; Mutillidae II và bWAPP cung cấp thêm các kịch bản injection, XSS, xác thực và session. Đây đều là ứng dụng cố ý có lỗ hổng và chỉ dùng trong môi trường được phép.
-
-| Mục tiêu | Port | Mục đích thực nghiệm |
+| Mục tiêu | Port | Mục đích |
 | --- | ---: | --- |
-| Juice Shop | 3000 | So sánh nhiều nhóm lỗi trong ứng dụng hiện đại |
-| WebGoat | 8082 | Thực nghiệm theo bài học OWASP có hướng dẫn |
-| Mutillidae II | 8083 | Injection, XSS và lỗi cấu hình |
+| Juice Shop | 3000 | Ứng dụng SPA/REST hiện đại |
+| WebGoat | 8082 | Bài học OWASP có hướng dẫn |
+| Mutillidae II | 8083 | Injection, XSS, lỗi cấu hình |
 | bWAPP | 8084 | Bộ kịch bản lỗi web đa dạng |
 
-## Đánh giá thực nghiệm
+Quét 2 lab (tự đăng ký tài khoản + đăng nhập + quét):
 
-Mục tiêu `/demo` có bốn lỗi đã biết:
+```powershell
+python scripts\test_live_labs.py --lab all
+```
 
-- Reflected XSS
-- Stored XSS
-- Potential SQL Injection thông qua lỗi SQL mô phỏng
-- Potential BOLA/IDOR thông qua endpoint object thiếu kiểm tra quyền
+Hoặc quét thủ công trên dashboard: nhập target `http://127.0.0.1:3000/` hoặc `http://127.0.0.1:8082/WebGoat`, với WebGoat nhập thêm thông tin ở mục **Authenticated lab session**. Khi chạy trong Docker dùng hostname `juice-shop`, `webgoat`; credential chỉ tồn tại trong request, không ghi vào báo cáo.
 
-Sau mỗi lần scan, hệ thống đối chiếu theo category + route + parameter với ground truth phiên bản hóa trong `docs/ground_truth.json`. Fixture `/demo-safe` cung cấp bốn mẫu âm để đo TN và FPR. Chỉ tính metric khi crawler nhận diện đúng fixture Sentinel tại `/demo` hoặc `/demo-safe`; một URL cùng path không đủ để xác nhận ground truth. BOLA demo yêu cầu hai header danh tính lab như ví dụ bên dưới.
-
-Để thực nghiệm BOLA bằng hai session, gửi thêm `comparison_session_headers` trong request `/api/scans`. Ví dụ chỉ dùng header của hai tài khoản lab được cấp phép:
+BOLA bằng 2 phiên: gửi thêm `comparison_session_headers`:
 
 ```json
 {
@@ -100,86 +117,72 @@ Sau mỗi lần scan, hệ thống đối chiếu theo category + route + parame
 }
 ```
 
-Dashboard cũng hỗ trợ authenticated scan. Mở mục `Authenticated lab session`,
-nhập login URL của Juice Shop (`http://127.0.0.1:3000/rest/user/login`), email
-và password của tài khoản lab. Sentinel sẽ tự tạo session/token cho campaign;
-credential chỉ tồn tại trong request hiện tại và không được ghi vào report.
+## 8. Báo cáo
 
-Endpoint báo cáo:
+| Định dạng | Endpoint |
+| --- | --- |
+| JSON | `/api/scans/{scan_id}/report` |
+| HTML (EN) | `/api/scans/{scan_id}/report.html` |
+| Markdown | `/api/scans/{scan_id}/report.md` |
+| **HTML tiếng Việt** (giải thích cho người ngoài ngành, dạng bảng, in PDF được) | `/api/scans/{scan_id}/report.vi.html` |
+| Danh sách campaign (JSON) | `/api/scans` |
+| **Trang lịch sử tiếng Việt** | `/lich-su.html` |
 
-- JSON: `/api/scans/{scan_id}/report`
-- HTML: `/api/scans/{scan_id}/report.html`
-- Markdown: `/api/scans/{scan_id}/report.md`
-- Lịch sử campaign: `/api/scans`
-
-## Kiểm thử mã nguồn
-
-## Quét Juice Shop và WebGoat
-
-Nếu Sentinel chạy bằng Docker, nhập target **`http://juice-shop:3000/`** hoặc
-**`http://webgoat:8080/WebGoat`** trên dashboard. `localhost` trong container
-là container Sentinel, không phải máy Windows. Nếu Sentinel chạy trực tiếp
-bằng Python, dùng `http://127.0.0.1:3000/` và `http://127.0.0.1:8082/WebGoat`.
-
-Khởi động hai lab cùng Sentinel: `docker compose up --build sentinel juice-shop webgoat`.
-WebGoat cần tạo tài khoản lab trước tại trang đăng ký, rồi nhập login URL
-`http://webgoat:8080/WebGoat/login` (Docker) hoặc
-`http://127.0.0.1:8082/WebGoat/login` (Python), username và password trên dashboard.
-
-Các kiểm tra riêng đã triển khai:
-
-- Juice Shop: SQLi tại `/rest/products/search`, so sánh input bình thường với dấu nháy;
-  DOM XSS tại `/#/search`, chỉ ghi nhận khi Chromium thực thi marker duy nhất.
-- WebGoat: SQLi tại `/WebGoat/SqlInjection/attack8`, gửi đủ `name`, `auth_tan` và
-  xác nhận chuyển từ `lessonCompleted=false` sang `true` kèm bảng kết quả.
-
-DOM XSS cần Chromium (`python -m playwright install chromium`). Lỗi browser
-được ghi trong `pages[].lab_browser_error` của báo cáo JSON. Endpoint bài học
-không tồn tại hoặc phiên không hợp lệ sẽ không được coi là lỗ hổng.
-Chưa có kiểm tra riêng xác nhận Stored XSS hoặc BOLA cho hai lab này;
-không nên hiểu kết quả không có finding là ứng dụng an toàn.
-Các test giả lập HTTP kiểm chứng logic adapter; cần quét trên container thực tế
-để xác nhận tương thích với phiên bản lab đang sử dụng.
-
-Nguồn endpoint: [WebGoat attack8](https://github.com/WebGoat/WebGoat/blob/main/src/main/java/org/owasp/webgoat/lessons/sqlinjection/introduction/SqlInjectionLesson8.java)
-và [Juice Shop search](https://github.com/juice-shop/juice-shop/blob/master/routes/search.ts).
-
-### Chạy test
+Xuất mỗi báo cáo thành một file riêng theo `scan_id` (mở offline, không cần server):
 
 ```powershell
-pytest -q
+python scripts\export_reports.py            # tạo reports/index.html + reports/bao-cao-<scan_id>.html
 ```
 
-Test bao gồm API, scope, repository và adapter lab.
+## 9. Đánh giá thực nghiệm
 
-### Benchmark dương/âm và thời gian từng nhóm
+- Fixture `/demo` (4 ca dương lõi + 4 ca dương OWASP 2025) và `/demo-safe` (các ca âm) có ground truth phiên bản hóa trong `docs/ground_truth.json`.
+- Đối chiếu theo **category + route + parameter**; tính Precision, Recall, F1, TP/FP/FN/TN, FPR; đo thời gian từng nhóm.
+- Nhóm OWASP 2025 mở rộng được chấm **riêng** để không ảnh hưởng benchmark lõi.
 
 ```powershell
-python scripts/benchmark_lab.py --start-local --repeats 3
+python scripts\benchmark_lab.py --start-local --repeats 3
 ```
 
-Lệnh tự chạy API offline tại `127.0.0.1:8765`, không dùng DeepSeek, rồi dừng API.
-Kết quả JSON/CSV/Markdown nằm trong `data/benchmark`. Ba lần lặp gồm 24 quan sát
-trên 8 trường hợp duy nhất. `test_timings_ms` đo probe + xác thực + refinement,
-không gồm recon/planning và không phải thời gian khai thác thành công.
-Xem chức năng, giới hạn và quy trình so sánh ZAP/Burp trong
-[docs/lab_completion.md](docs/lab_completion.md).
+Lệnh tự chạy API offline, không dùng DeepSeek, xuất `data/benchmark/benchmark.{json,csv,md}` và `benchmark_extended.csv`. Kết quả tham chiếu: benchmark lõi (8 fixture) và nhóm mở rộng (A02/A03/A04/A07) đều đạt **Precision = Recall = F1 = 1.0, FPR = 0.0**. `test_timings_ms` đo probe + xác thực + refinement (không gồm recon/planning, không phải thời gian khai thác).
 
-## Cấu trúc chính
+## 10. Chạy test
+
+```powershell
+pytest -q        # 54 test: API, scope, repository, adapter lab, detector mở rộng, orchestrator tool-calling
+```
+
+## 11. Cấu trúc mã nguồn
 
 ```text
 app/
-  agent.py          Điều phối Agent và vòng lặp kiểm thử
-  tools.py          Crawler và HTTP request tool
-  scope.py          Kiểm soát phạm vi mục tiêu
-  repository.py     Lưu campaign bằng SQLite
-  schemas.py        Mô hình request, finding và report
-  main.py           FastAPI routes và lab demo
-  static/           Dashboard frontend
-tests/              Test scope, API health và repository
-docs/               Tài liệu kiến trúc và đánh giá
+  main.py          FastAPI routes, lab demo (/demo, /demo-safe), các endpoint báo cáo + /lich-su.html
+  agent.py         Điều phối đa agent (deterministic) + nhánh function-calling
+  toolbox.py       9 tool + vòng lặp ReAct function-calling (AI chỉ gọi tool)
+  reasoning.py     Phiên LLM có schema (Pydantic), redact dữ liệu trước khi gửi
+  tools.py         Crawler, HTTP request tool, Playwright, adapter Juice Shop/WebGoat
+  labs.py          Oracle riêng từng lab + extended_lab_checks (A07/A02 cho lab)
+  passive.py       Detector thụ động A02/A03/A04 (header/cookie/version)
+  auth_checks.py   Detector A07 (default creds, không khóa) cho form login
+  evaluation.py    Metric lõi (evaluate_demo/lab) + mở rộng (evaluate_extended)
+  scope.py         Scope Guard giới hạn mục tiêu
+  repository.py    Lưu lịch sử campaign bằng SQLite
+  report_vi.py     Báo cáo HTML tiếng Việt + trang lịch sử tiếng Việt
+  schemas.py       Mô hình request/finding/report
+  static/          Dashboard frontend
+scripts/
+  test_live_labs.py    Quét Juice Shop + WebGoat (đăng ký + đăng nhập)
+  benchmark_lab.py     Benchmark dương/âm, xuất data/benchmark
+  export_reports.py    Xuất báo cáo tiếng Việt ra file theo scan_id
+docs/                ground_truth.json và tài liệu đánh giá
+tests/               54 test
 ```
 
-## Giới hạn và hướng phát triển
+## 12. Giới hạn & hướng phát triển
 
-Phiên bản hiện tại phục vụ tiểu luận, tập trung vào XSS, SQL Injection và BOLA/IDOR trong môi trường lab được cho phép. Pipeline gồm các worker Recon, Planning, Attack, Verification và Reporting; chỉ Planning gọi LLM, kèm một vòng refinement có giới hạn. Reflected/Stored XSS dùng bằng chứng HTML tĩnh; DOM XSS Juice Shop có oracle browser. Ground-truth manifest cho các lab Docker đã có scenario ID và oracle, nhưng phải chạy xác nhận từng scenario trước khi báo cáo metric. Benchmark với OWASP ZAP/Burp chưa được chạy.
+- Reflected/Stored XSS dùng bằng chứng HTML tĩnh; DOM XSS Juice Shop có oracle Chromium.
+- Chế độ function-calling dao động theo từng lần chạy và tốn nhiều token hơn deterministic.
+- Chưa chạy benchmark đối sánh định lượng với OWASP ZAP / Burp Suite (so sánh hiện ở mức năng lực).
+- WebGoat còn nhiều bài học khác (JWT, Crypto, Path Traversal…) cần oracle riêng theo phiên bản — để hướng phát triển.
+
+> Chỉ kiểm thử những hệ thống thuộc quyền sở hữu hoặc có sự cho phép bằng văn bản.

@@ -1,0 +1,142 @@
+<!doctype html><html lang='vi'><head><meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <title>Báo cáo kiểm thử an toàn — 97c426d4-3c28-408a-bd21-1198a6c539dd</title>
+    <style>
+      html{color-scheme:light}
+      *{box-sizing:border-box}
+      body{font:15px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:960px;margin:0 auto;padding:28px 20px;color:#1a1a1a;background:#ffffff}
+      header.cover{border-bottom:3px solid #0b5;padding-bottom:16px;margin-bottom:8px}
+      header.cover h1{color:#0b5;font-size:26px;margin:0 0 6px}
+      .meta{color:#444a50;font-size:14px}
+      .meta b{color:#1a1a1a}
+      h2{font-size:20px;border-left:4px solid #0b5;padding-left:10px;margin-top:34px}
+      h3{font-size:18px;margin:0 0 10px}
+      table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+      th,td{border:1px solid #d8dee4;padding:9px 11px;text-align:left;vertical-align:top}
+      thead th{background:#0b5;color:#fff;font-weight:600}
+      tbody tr:nth-child(even){background:#f6f8fa}
+      table.kv th{background:#f0f3f6;width:210px;white-space:nowrap}
+      table.stat{max-width:360px}
+      .badge{color:#fff;padding:2px 10px;border-radius:20px;font-size:12px;white-space:nowrap}
+      .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:8px;vertical-align:middle}
+      .mono{font-family:Consolas,monospace;font-size:13px;word-break:break-all}
+      .verdict{background:#fff4e5;border:1px solid #ffd8a8;border-radius:10px;padding:12px 16px;margin:14px 0}
+      .finding{border:1px solid #e1e4e8;border-radius:12px;padding:16px 18px;margin:16px 0;page-break-inside:avoid}
+      footer{color:#6a6f78;font-size:13px;margin-top:30px;border-top:1px solid #eee;padding-top:12px}
+      @media print{body{max-width:none}.finding{border-color:#ccc}}
+    </style></head>
+    <body>
+      <header class='cover'>
+        <h1>BÁO CÁO KIỂM THỬ XÂM NHẬP ỨNG DỤNG WEB</h1>
+        <div class='meta'>
+          <div><b>Hệ thống mục tiêu:</b> http://127.0.0.1:8082/WebGoat</div>
+          <div><b>Ngày lập báo cáo:</b> 19/10/2026 01:54</div>
+          <div><b>Thời gian quét:</b> 3124 mili-giây · <b>Mã phiên:</b> 97c426d4-3c28-408a-bd21-1198a6c539dd</div>
+          <div><b>Thực hiện bởi:</b> Hệ thống AI Pentest Agent (Sentinel)</div>
+        </div>
+      </header>
+
+      <h2>1. Tóm tắt</h2>
+      <div class='verdict'>Qua kiểm thử tự động, hệ thống tồn tại lỗ hổng NGHIÊM TRỌNG cần xử lý ngay. Tổng cộng phát hiện <b>6</b> vấn đề an toàn thông tin
+      (3 mức Cao, 3 mức Trung bình, 0 mức Thấp).</div>
+      <table class='stat'>
+        <thead><tr><th>Mức độ nghiêm trọng</th><th style='text-align:center'>Số lượng</th></tr></thead>
+        <tbody><tr><td><span class='dot' style='background:#d93025'></span>Cao</td><td style='text-align:center'>3</td></tr><tr><td><span class='dot' style='background:#e8710a'></span>Trung bình</td><td style='text-align:center'>3</td></tr><tr><td><span class='dot' style='background:#f2a600'></span>Thấp</td><td style='text-align:center'>0</td></tr><tr><td><span class='dot' style='background:#5f6368'></span>Thông tin</td><td style='text-align:center'>0</td></tr></tbody>
+      </table>
+
+      <h2>2. Bảng tổng hợp phát hiện</h2>
+      <table>
+        <thead><tr><th>STT</th><th>Lỗ hổng</th><th>Mức độ</th><th>Phân loại OWASP 2025</th><th>Vị trí</th></tr></thead>
+        <tbody><tr><td style='text-align:center'>1</td><td>Mã độc được lưu trên hệ thống (Stored XSS)</td><td><span class='badge' style='background:#d93025'>Cao</span></td><td>A05:2025 – Injection</td><td class='mono'>http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss</td></tr><tr><td style='text-align:center'>2</td><td>Tấn công cơ sở dữ liệu (SQL Injection)</td><td><span class='badge' style='background:#d93025'>Cao</span></td><td>A05:2025 – Injection</td><td class='mono'>http://127.0.0.1:8082/WebGoat/SqlInjection/attack8</td></tr><tr><td style='text-align:center'>3</td><td>Xem trộm dữ liệu người khác (IDOR)</td><td><span class='badge' style='background:#d93025'>Cao</span></td><td>A01:2025 – Broken Access Control</td><td class='mono'>http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388</td></tr><tr><td style='text-align:center'>4</td><td>Cấu hình bảo mật thiếu an toàn</td><td><span class='badge' style='background:#e8710a'>Trung bình</span></td><td>A02:2025 – Security Misconfiguration</td><td class='mono'>http://127.0.0.1:8082/WebGoat/start.mvc</td></tr><tr><td style='text-align:center'>5</td><td>Cơ chế đăng nhập yếu</td><td><span class='badge' style='background:#e8710a'>Trung bình</span></td><td>A07:2025 – Authentication Failures</td><td class='mono'>http://127.0.0.1:8082/WebGoat/login</td></tr><tr><td style='text-align:center'>6</td><td>Cấu hình bảo mật thiếu an toàn</td><td><span class='badge' style='background:#e8710a'>Trung bình</span></td><td>A02:2025 – Security Misconfiguration</td><td class='mono'>http://127.0.0.1:8082/WebGoat/actuator/env</td></tr></tbody>
+      </table>
+
+      <h2>3. Chi tiết từng lỗ hổng</h2>
+      
+        <div class='finding'>
+          <h3>1. Mã độc được lưu trên hệ thống (Stored XSS) <span class='badge' style='background:#d93025'>Cao</span></h3>
+          <table class='kv'>
+            <tr><th>Phân loại OWASP 2025</th><td>A05:2025 – Injection</td></tr>
+            <tr><th>Mức độ nghiêm trọng</th><td>Cao</td></tr>
+            <tr><th>Vị trí (URL)</th><td class='mono'>http://127.0.0.1:8082/WebGoat/CrossSiteScriptingStored/stored-xss</td></tr>
+            <tr><th>Tham số</th><td class='mono'>text</td></tr>
+            <tr><th>Lỗ hổng này là gì?</th><td>Kẻ tấn công lưu đoạn mã độc vào website (bình luận, đánh giá sản phẩm). Mã tự chạy mỗi khi có người khác xem.</td></tr>
+            <tr><th>Vì sao nguy hiểm?</th><td>Ảnh hưởng mọi người xem nội dung đó, kể cả quản trị viên; có thể chiếm tài khoản hàng loạt.</td></tr>
+            <tr><th>Bằng chứng kỹ thuật</th><td>POST stored-xss comment was accepted and the raw script marker was returned by a later independent GET. No victim session was accessed.</td></tr>
+            <tr><th>Khuyến nghị khắc phục</th><td>Contextually encode stored comments before rendering and apply a restrictive Content-Security-Policy.</td></tr>
+          </table>
+        </div>
+        <div class='finding'>
+          <h3>2. Tấn công cơ sở dữ liệu (SQL Injection) <span class='badge' style='background:#d93025'>Cao</span></h3>
+          <table class='kv'>
+            <tr><th>Phân loại OWASP 2025</th><td>A05:2025 – Injection</td></tr>
+            <tr><th>Mức độ nghiêm trọng</th><td>Cao</td></tr>
+            <tr><th>Vị trí (URL)</th><td class='mono'>http://127.0.0.1:8082/WebGoat/SqlInjection/attack8</td></tr>
+            <tr><th>Tham số</th><td class='mono'>name</td></tr>
+            <tr><th>Lỗ hổng này là gì?</th><td>Kẻ tấn công nhập chuỗi đặc biệt vào ô dữ liệu để lừa cơ sở dữ liệu chạy lệnh của chúng.</td></tr>
+            <tr><th>Vì sao nguy hiểm?</th><td>Đọc, sửa, xóa dữ liệu hoặc vượt qua đăng nhập — một trong những lỗ hổng nguy hiểm nhất.</td></tr>
+            <tr><th>Bằng chứng kỹ thuật</th><td>POST attack8: benign name did not complete the lesson; a boolean SQL payload completed it and returned an employee table. No employee values are retained in the report.</td></tr>
+            <tr><th>Khuyến nghị khắc phục</th><td>Use parameterized queries for name and auth_tan.</td></tr>
+          </table>
+        </div>
+        <div class='finding'>
+          <h3>3. Xem trộm dữ liệu người khác (IDOR) <span class='badge' style='background:#d93025'>Cao</span></h3>
+          <table class='kv'>
+            <tr><th>Phân loại OWASP 2025</th><td>A01:2025 – Broken Access Control</td></tr>
+            <tr><th>Mức độ nghiêm trọng</th><td>Cao</td></tr>
+            <tr><th>Vị trí (URL)</th><td class='mono'>http://127.0.0.1:8082/WebGoat/IDOR/profile/2342388</td></tr>
+            <tr><th>Tham số</th><td class='mono'>userId</td></tr>
+            <tr><th>Lỗ hổng này là gì?</th><td>Chỉ cần đổi mã số trên đường dẫn (ví dụ id=1 thành id=2), người dùng xem được dữ liệu của người khác vì hệ thống không kiểm tra quyền sở hữu.</td></tr>
+            <tr><th>Vì sao nguy hiểm?</th><td>Lộ thông tin cá nhân, đơn hàng, giỏ hàng… của người dùng khác.</td></tr>
+            <tr><th>Bằng chứng kỹ thuật</th><td>IDOR profile: an authenticated session read another user&#x27;s profile object (userId 2342388) without an object-level authorization error. No profile values are retained in the report.</td></tr>
+            <tr><th>Khuyến nghị khắc phục</th><td>Enforce object-level authorization on every request and verify the resource belongs to the authenticated user.</td></tr>
+          </table>
+        </div>
+        <div class='finding'>
+          <h3>4. Cấu hình bảo mật thiếu an toàn <span class='badge' style='background:#e8710a'>Trung bình</span></h3>
+          <table class='kv'>
+            <tr><th>Phân loại OWASP 2025</th><td>A02:2025 – Security Misconfiguration</td></tr>
+            <tr><th>Mức độ nghiêm trọng</th><td>Trung bình</td></tr>
+            <tr><th>Vị trí (URL)</th><td class='mono'>http://127.0.0.1:8082/WebGoat/start.mvc</td></tr>
+            <tr><th>Tham số</th><td class='mono'>(toàn trang)</td></tr>
+            <tr><th>Lỗ hổng này là gì?</th><td>Hệ thống thiếu thiết lập bảo vệ cần thiết (thiếu lớp phòng vệ của trình duyệt, hoặc để lộ thư mục/cấu hình nội bộ).</td></tr>
+            <tr><th>Vì sao nguy hiểm?</th><td>Giúp kẻ tấn công dò tìm và khai thác dễ dàng hơn.</td></tr>
+            <tr><th>Bằng chứng kỹ thuật</th><td>The HTML response is missing security response headers: Content-Security-Policy, X-Frame-Options, X-Content-Type-Options.</td></tr>
+            <tr><th>Khuyến nghị khắc phục</th><td>Set Content-Security-Policy, X-Frame-Options and X-Content-Type-Options on application responses.</td></tr>
+          </table>
+        </div>
+        <div class='finding'>
+          <h3>5. Cơ chế đăng nhập yếu <span class='badge' style='background:#e8710a'>Trung bình</span></h3>
+          <table class='kv'>
+            <tr><th>Phân loại OWASP 2025</th><td>A07:2025 – Authentication Failures</td></tr>
+            <tr><th>Mức độ nghiêm trọng</th><td>Trung bình</td></tr>
+            <tr><th>Vị trí (URL)</th><td class='mono'>http://127.0.0.1:8082/WebGoat/login</td></tr>
+            <tr><th>Tham số</th><td class='mono'>password</td></tr>
+            <tr><th>Lỗ hổng này là gì?</th><td>Chức năng đăng nhập thiếu biện pháp bảo vệ (không khóa tài khoản khi dò mật khẩu, hoặc chấp nhận mật khẩu mặc định).</td></tr>
+            <tr><th>Vì sao nguy hiểm?</th><td>Tài khoản dễ bị dò mật khẩu và chiếm đoạt.</td></tr>
+            <tr><th>Bằng chứng kỹ thuật</th><td>5 consecutive failed logins all returned to /login?error and were never rate-limited or locked out.</td></tr>
+            <tr><th>Khuyến nghị khắc phục</th><td>Apply rate limiting, account lockout or CAPTCHA after repeated authentication failures.</td></tr>
+          </table>
+        </div>
+        <div class='finding'>
+          <h3>6. Cấu hình bảo mật thiếu an toàn <span class='badge' style='background:#e8710a'>Trung bình</span></h3>
+          <table class='kv'>
+            <tr><th>Phân loại OWASP 2025</th><td>A02:2025 – Security Misconfiguration</td></tr>
+            <tr><th>Mức độ nghiêm trọng</th><td>Trung bình</td></tr>
+            <tr><th>Vị trí (URL)</th><td class='mono'>http://127.0.0.1:8082/WebGoat/actuator/env</td></tr>
+            <tr><th>Tham số</th><td class='mono'>(toàn trang)</td></tr>
+            <tr><th>Lỗ hổng này là gì?</th><td>Hệ thống thiếu thiết lập bảo vệ cần thiết (thiếu lớp phòng vệ của trình duyệt, hoặc để lộ thư mục/cấu hình nội bộ).</td></tr>
+            <tr><th>Vì sao nguy hiểm?</th><td>Giúp kẻ tấn công dò tìm và khai thác dễ dàng hơn.</td></tr>
+            <tr><th>Bằng chứng kỹ thuật</th><td>The Spring Boot Actuator endpoint /actuator/env was reachable without authentication and disclosed application environment and property sources.</td></tr>
+            <tr><th>Khuyến nghị khắc phục</th><td>Restrict or disable Actuator endpoints in production and require authentication for management endpoints.</td></tr>
+          </table>
+        </div>
+
+      <h2>4. Phạm vi và phương pháp</h2>
+      <p>Báo cáo được tạo tự động bằng hệ thống AI Pentest Agent theo mô hình ReAct (suy luận – hành động),
+      kiểm thử theo phương pháp hộp đen trên hệ thống <b>được cấp phép</b> trong môi trường phòng lab.
+      Mỗi lỗ hổng chỉ được ghi nhận khi có bằng chứng xác thực từ phản hồi thực tế của máy chủ
+      (không dựa trên phán đoán). Kết quả phản ánh trạng thái tại thời điểm quét.</p>
+
+      <footer>Báo cáo tạo tự động — Hệ thống kiểm thử xâm nhập ứng dụng web có sử dụng AI Agent.
+      Chỉ sử dụng cho mục đích kiểm thử hợp pháp. Mã phiên quét: 97c426d4-3c28-408a-bd21-1198a6c539dd.</footer>
+    </body></html>

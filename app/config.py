@@ -5,6 +5,9 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek-chat"
     deepseek_base_url: str = "https://api.deepseek.com"
+    # auto = function-calling when an API key is set, deterministic otherwise;
+    # force with "function_calling" or "deterministic".
+    agent_mode: str = "auto"
     agent_timeout_seconds: float = 30.0
     agent_max_tokens: int = 1600
     allowed_target_hosts: str = "localhost,127.0.0.1"

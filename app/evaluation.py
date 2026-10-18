@@ -7,6 +7,11 @@ MANIFEST = json.loads((Path(__file__).resolve().parents[1] / "docs" / "ground_tr
 
 CATEGORIES = ("Reflected XSS", "Stored XSS", "Potential SQL Injection", "Potential BOLA/IDOR")
 
+# OWASP Top 10:2025 categories added on top of the four core injection/access cases.
+# Scored separately so they never disturb the core benchmark above.
+EXTENDED_CATEGORIES = ("Security Misconfiguration", "Software Supply Chain Exposure",
+                       "Cryptographic Failures", "Authentication Failures")
+
 
 def metrics(tp: int, fp: int, fn: int, tn: int) -> dict:
     precision = tp / (tp + fp) if tp + fp else 0.0
@@ -37,7 +42,10 @@ def evaluate_demo(target: str, pages: list[dict], findings: list) -> dict:
         scenarios.append({"category": category, "expected_positive": positive, "detected": detected,
                           "outcome": ("TP" if detected else "FN") if positive else ("FP" if detected else "TN")})
     outcomes = [s["outcome"] for s in scenarios]
-    unexpected = len(set(range(len(findings))) - matched)
+    # Only unmatched findings within the four scored categories count as false positives.
+    # Findings from other OWASP categories are evaluated separately by evaluate_extended.
+    core_indices = {i for i, f in enumerate(findings) if f.category in CATEGORIES}
+    unexpected = len(core_indices - matched)
     result = metrics(outcomes.count("TP"), outcomes.count("FP") + unexpected, outcomes.count("FN"), outcomes.count("TN"))
     # Extra findings are unmatched claims; they are not negative test cases for FPR.
     negative_count = outcomes.count("FP") + outcomes.count("TN")
@@ -88,3 +96,42 @@ def evaluate_lab(target: str, pages: list[dict], findings: list) -> dict:
             "scenarios": scenarios, "unmatched_findings": unexpected,
             "measurement_unit": "category + route prefix + parameter; duplicate evidence counts once",
             "note": "Precision/Recall cover only the pinned, oracle-backed scenarios listed here."}
+
+
+def evaluate_extended(target: str, pages: list[dict], findings: list) -> dict:
+    """Scenario-level metrics for the added OWASP Top 10:2025 categories.
+
+    The /demo fixture is the positive case (every extended category is expected);
+    /demo-safe is the negative case (none expected). Matching is by category and
+    by the finding URL path falling under the fixture path, since passive findings
+    carry no parameter. Kept independent of evaluate_demo so the core benchmark
+    is never affected.
+    """
+    path = urlparse(target).path.rstrip("/") or "/"
+    fixture = next((f for f in MANIFEST["fixtures"]
+                    if f.get("target_path") == path and f.get("fixture_id")
+                    and f.get("ground_truth_available") and f.get("name") in ("demo", "demo-safe")), None)
+    identity = fixture["fixture_id"] if fixture else None
+    if not identity or not any(p.get("fixture_id") == identity and p.get("status") == 200 for p in pages):
+        return {"ground_truth_available": False, "fpr_available": False}
+    positive = fixture["name"] == "demo"
+    scenarios = []
+    matched = set()
+    for category in EXTENDED_CATEGORIES:
+        hits = [i for i, f in enumerate(findings)
+                if f.category == category and (urlparse(f.url).path.rstrip("/") or "/").startswith(path)]
+        matched.update(hits)
+        detected = bool(hits)
+        scenarios.append({"category": category, "expected_positive": positive, "detected": detected,
+                          "outcome": ("TP" if detected else "FN") if positive else ("FP" if detected else "TN")})
+    outcomes = [s["outcome"] for s in scenarios]
+    extended_indices = {i for i, f in enumerate(findings) if f.category in EXTENDED_CATEGORIES}
+    unexpected = len(extended_indices - matched)
+    result = metrics(outcomes.count("TP"), outcomes.count("FP") + unexpected, outcomes.count("FN"), outcomes.count("TN"))
+    negative_count = outcomes.count("FP") + outcomes.count("TN")
+    result["fpr_available"] = bool(negative_count)
+    result["false_positive_rate"] = outcomes.count("FP") / negative_count if negative_count else None
+    return {**result, "ground_truth_available": True, "fixture_id": identity,
+            "manifest_version": MANIFEST["version"], "scenarios": scenarios, "unmatched_findings": unexpected,
+            "categories": list(EXTENDED_CATEGORIES),
+            "measurement_unit": "category + route prefix; duplicate evidence counts once"}

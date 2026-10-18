@@ -12,7 +12,13 @@
         "Potential SQL Injection",
         "Potential BOLA/IDOR"
       ],
-      "notes": "Four positive category/route/parameter cases. SQLi is simulated; XSS uses static HTML evidence; BOLA requires X-Lab-User user-1 and user-2 sessions.",
+      "extended_expected": [
+        "Security Misconfiguration",
+        "Software Supply Chain Exposure",
+        "Cryptographic Failures",
+        "Authentication Failures"
+      ],
+      "notes": "Four positive category/route/parameter cases plus four positive OWASP Top 10:2025 extended cases (A02 missing security headers, A03 version-disclosing banners, A04 insecure cookie, A07 default credentials and no lockout on /demo/login). SQLi is simulated; XSS uses static HTML evidence; BOLA requires X-Lab-User user-1 and user-2 sessions.",
       "fixture_id": "sentinel-demo-v2"
     },
     {
@@ -27,7 +33,13 @@
         "Potential SQL Injection",
         "Potential BOLA/IDOR"
       ],
-      "notes": "HTML-escaped search and persisted notes, no SQL errors, object-level owner checks. Four negative cases."
+      "extended_negative": [
+        "Security Misconfiguration",
+        "Software Supply Chain Exposure",
+        "Cryptographic Failures",
+        "Authentication Failures"
+      ],
+      "notes": "HTML-escaped search and persisted notes, no SQL errors, object-level owner checks. Four core negative cases plus four OWASP 2025 negative cases (security headers present, no version banner, hardened cookie, default credentials rejected and lockout after repeated failures on /demo-safe/login)."
     },
     {
       "name": "juice-shop",
@@ -38,7 +50,9 @@
       "target_path": "/",
       "expected_findings": [
         "DOM XSS",
-        "Potential SQL Injection"
+        "Potential SQL Injection",
+        "Authentication Failures",
+        "Security Misconfiguration"
       ],
       "scenarios": [
         {
@@ -56,9 +70,25 @@
           "route": "/rest/products/search",
           "parameter": "q",
           "status": "verified-local-image"
+        },
+        {
+          "id": "juice-shop-a07-01",
+          "category": "Authentication Failures",
+          "oracle": "no-lockout-after-repeated-failed-logins",
+          "route": "/rest/user/login",
+          "parameter": "password",
+          "status": "verified-local-image"
+        },
+        {
+          "id": "juice-shop-a02-01",
+          "category": "Security Misconfiguration",
+          "oracle": "directory-listing-exposed",
+          "route": "/ftp",
+          "parameter": null,
+          "status": "verified-local-image"
         }
       ],
-      "notes": "Run only against the pinned Compose image (bkimminich/juice-shop:v19.2.0). DOM XSS is confirmed by a unique Chromium alert marker; SQLi by a database-error signature or a true/false product-count pair. Two positive category/route/parameter cases. Scheduled reset is not required for these read-only checks."
+      "notes": "Run only against the pinned Compose image (bkimminich/juice-shop:v19.2.0). DOM XSS is confirmed by a unique Chromium alert marker; SQLi by a database-error signature or a true/false product-count pair; A07 by five failed REST logins never triggering lockout; A02 by the /ftp directory listing. Read-only or bounded checks; scheduled reset not required."
     },
     {
       "name": "webgoat",
@@ -70,7 +100,9 @@
       "expected_findings": [
         "SQL Injection",
         "Stored XSS",
-        "Potential BOLA/IDOR"
+        "Potential BOLA/IDOR",
+        "Authentication Failures",
+        "Security Misconfiguration"
       ],
       "scenarios": [
         {
@@ -96,9 +128,25 @@
           "route": "/WebGoat/IDOR/profile/{userId}",
           "parameter": "userId",
           "status": "verified-local-image"
+        },
+        {
+          "id": "webgoat-a07-01",
+          "category": "Authentication Failures",
+          "oracle": "no-lockout-login-error-redirect",
+          "route": "/WebGoat/login",
+          "parameter": "password",
+          "status": "verified-local-image"
+        },
+        {
+          "id": "webgoat-a02-actuator-01",
+          "category": "Security Misconfiguration",
+          "oracle": "spring-actuator-env-exposed",
+          "route": "/WebGoat/actuator",
+          "parameter": null,
+          "status": "verified-local-image"
         }
       ],
-      "notes": "Requires a registered lab account and an authenticated session. SQLi, Stored XSS and IDOR are each confirmed by the lesson's own completion oracle. No employee or profile values are retained. Three positive category/route/parameter cases."
+      "notes": "Requires a registered lab account and an authenticated session. SQLi, Stored XSS and IDOR are confirmed by each lesson's completion oracle; A07 by repeated failed logins never locking out; A02 by the exposed Spring Boot Actuator /actuator/env. No employee or profile values are retained."
     },
     {
       "name": "mutillidae",
