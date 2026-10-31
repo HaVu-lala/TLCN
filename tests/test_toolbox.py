@@ -10,7 +10,9 @@ from app.tools import WebTools
 
 def _mock_tools() -> WebTools:
     def handler(request):
-        return httpx.Response(200, text="<title>Lab</title><form action='/' method='get'><input name='q'></form>",
+        q = request.url.params.get("q", "")
+        body = f"<title>Lab</title><form action='/' method='get'><input name='q'></form><div>{q}</div>"
+        return httpx.Response(200, text=body,
                               headers={"content-type": "text/html", "server": "Werkzeug/2.0.3", "set-cookie": "s=1; Path=/"})
     tools = WebTools("http://localhost/demo")
     tools.client.close()
@@ -29,11 +31,10 @@ def test_tool_calling_loop_executes_tools_and_confirms_finding(monkeypatch):
 
     script = [
         [{"id": "c1", "type": "function", "function": {"name": "reconnaissance", "arguments": "{}"}}],
-        [{"id": "c2", "type": "function", "function": {"name": "verify_vulnerability", "arguments": json.dumps({
+        [{"id": "c2", "type": "function", "function": {"name": "probe_and_verify", "arguments": json.dumps({
             "kind": "reflected_xss", "url": "http://localhost/demo", "parameter": "q",
-            "payload": "<script>alert('sentinel-x')</script>",
-            "response_body": "<script>alert('sentinel-x')</script>", "status": 200, "content_type": "text/html"})}}],
-        [{"id": "c3", "type": "function", "function": {"name": "audit_response_security", "arguments": "{}"}}],
+            "payload": "<script>alert('sentinel-x')</script>"})}}],
+        [{"id": "c3", "type": "function", "function": {"name": "run_security_checks", "arguments": "{}"}}],
         [{"id": "c4", "type": "function", "function": {"name": "generate_report", "arguments": "{}"}}],
     ]
     calls = {"n": 0}
@@ -54,7 +55,7 @@ def test_tool_calling_loop_executes_tools_and_confirms_finding(monkeypatch):
 
     categories = {f.category for f in findings}
     assert "Reflected XSS" in categories                 # confirmed by the deterministic oracle
-    assert "Security Misconfiguration" in categories      # surfaced because the model CALLED audit_response_security
+    assert "Security Misconfiguration" in categories      # surfaced because the model CALLED run_security_checks
     assert agent.llm_calls == 4
     assert agent.llm_usage["total_tokens"] == 112
     assert agent.steps == 4

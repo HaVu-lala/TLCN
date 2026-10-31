@@ -8,12 +8,9 @@ from bs4 import BeautifulSoup
 
 from app.schemas import AgentTrace, Finding, LoginRequest
 from app.tools import WebTools
-from app.labs import check_lab, extended_lab_checks
-from app.passive import passive_findings
-from app.auth_checks import check_authentication
+from app.labs import check_lab
 from app.memory import LongTermMemory
-from app.browser_xss import browser_reflected_xss
-from app.access_control import check_access_control
+from app.detectors import DetectorContext, run_all
 from app.reasoning import ReasoningAgent, PlanDecision, ALLOWED_TESTS, public_url, page_context
 
 
@@ -282,18 +279,13 @@ class PentestAgent:
         self.trace.append(AgentTrace(agent=self.verifier.name, status="completed", detail=f"Produced {len(findings)} candidates before deduplication."))
         self.trace.append(AgentTrace(agent="ReActFeedback", status="completed" if refinement_count else "skipped", detail=f"Executed {refinement_count} bounded refinement probes."))
         extended_started = perf_counter()
-        passive = passive_findings(pages, self.target_url)
-        auth = check_authentication(self.recon.tools, pages)
-        lab_extra = extended_lab_checks(self.recon.tools, pages)
-        browser_xss = browser_reflected_xss(self.recon.tools, pages)
-        access = check_access_control(self.recon.tools, pages)
-        findings.extend(passive)
-        findings.extend(auth)
-        findings.extend(lab_extra)
-        findings.extend(browser_xss)
-        findings.extend(access)
+        # Standing OWASP detectors come from the shared registry (app.detectors),
+        # so the same battery runs here and in the function-calling Tool 4.
+        ctx = DetectorContext(tools=self.recon.tools, pages=pages, comparison_tools=self.attack.comparison_tools)
+        standing = run_all(ctx)
+        findings.extend(standing)
         self.test_timings_ms["owasp_extended"] = round((perf_counter() - extended_started) * 1000, 2)
-        self.trace.append(AgentTrace(agent="ExtendedDetectors", status="completed" if (passive or auth or lab_extra) else "skipped", detail=f"OWASP 2025 passive, authentication and lab checks produced {len(passive) + len(auth) + len(lab_extra)} candidate(s)."))
+        self.trace.append(AgentTrace(agent="ExtendedDetectors", status="completed" if standing else "skipped", detail=f"Standing OWASP detector registry produced {len(standing)} candidate(s)."))
         findings = list({(item.category, item.url, item.parameter): item for item in findings}.values())
         self.summary = self.reporter.run(len(pages), plan, findings)
         self.trace.append(AgentTrace(agent=self.reporter.name, status="completed", detail="Generated structured findings and remediation advice."))

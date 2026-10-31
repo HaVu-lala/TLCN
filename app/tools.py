@@ -24,6 +24,7 @@ class WebTools:
             headers=session_headers or {},
             event_hooks={"request": [self._guard_request]},
         )
+        self.login_spec = login
         if login:
             self._login(login)
 
@@ -68,20 +69,46 @@ class WebTools:
                     raise ValueError("WebGoat login failed; verify username and password.")
                 self.authentication_status = "authenticated"
                 return
-            response = self.client.post(
-                login_url,
-                json={"email": login.username, "password": login.password},
-            )
-            response.raise_for_status()
-            payload = response.json()
+            cookies_before = set(self.client.cookies.keys())
+            # Modern JSON APIs (e.g. Juice Shop) expect {"email", "password"}.
+            token = self._attempt_login(login_url, json={"email": login.username, "password": login.password})
+            new_cookies = set(self.client.cookies.keys()) - cookies_before
+            if not token and not new_cookies:
+                # Traditional servlet/form apps expect form fields {"username", "password"}.
+                token = self._attempt_login(login_url, data={"username": login.username, "password": login.password})
+                new_cookies = set(self.client.cookies.keys()) - cookies_before
         except (httpx.HTTPError, ValueError) as exc:
             raise ValueError("Lab login failed; verify the authorized lab credentials and login URL.") from exc
-        token = payload.get("authentication", {}).get("token") or payload.get("token")
-        if not token:
-            raise ValueError("Lab login succeeded without a recognized session token.")
+        # Success is a recognized token in the body, or a freshly set session cookie.
+        if not token and not new_cookies:
+            raise ValueError("Lab login failed; verify the authorized lab credentials and login URL.")
         if token:
             self.client.headers["Authorization"] = f"Bearer {token}"
         self.authentication_status = "authenticated"
+
+    def _attempt_login(self, login_url: str, *, json: dict | None = None, data: dict | None = None) -> str | None:
+        """Post credentials and return a session token if the server returns one.
+
+        Returns None on any non-success response so the caller can try another
+        credential encoding. A set session cookie is detected separately by the caller.
+        """
+        try:
+            response = self.client.post(login_url, json=json, data=data)
+        except httpx.HTTPError:
+            return None
+        if response.status_code >= 400:
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        auth = payload.get("authentication")
+        if isinstance(auth, dict) and auth.get("token"):
+            return auth["token"]
+        token = payload.get("token")
+        return token if isinstance(token, str) else None
 
     def crawl(self) -> list[dict]:
         queue = deque([self.target_url])
@@ -181,7 +208,35 @@ class WebTools:
                 ])
         if settings.browser_scan_enabled and not any(page.get("lab") for page in pages):
             self._augment_with_browser(pages)
+        self._inject_login_surface(pages)
         return pages
+
+    def _inject_login_surface(self, pages: list[dict]) -> None:
+        """Advertise a user-supplied login endpoint as an attackable form.
+
+        A login page is often a JavaScript modal the crawler never reaches, so a
+        provided login_url would otherwise go untested. Exposing it as a form with
+        username/password fields lets the attack stage probe it for SQL injection
+        and lets the A07 check observe default-credential / lockout behaviour. The
+        oracle still decides every finding, so no false positive is introduced.
+        """
+        if not self.login_spec:
+            return
+        login_url = str(self.login_spec.login_url)
+        already = any(form.get("action", "").rstrip("/") == login_url.rstrip("/")
+                      for page in pages for form in page.get("forms", []))
+        if already:
+            return
+        pages.append({
+            "url": login_url, "status": 0, "content_type": "", "headers": {}, "body": "",
+            "forms": [{
+                "action": login_url, "method": "POST",
+                "inputs": [{"name": "username", "type": "text", "value": ""},
+                           {"name": "password", "type": "password", "value": ""}],
+                "source": "provided-login",
+            }],
+            "endpoints": [],
+        })
 
     def _augment_with_browser(self, pages: list[dict]) -> None:
         try:

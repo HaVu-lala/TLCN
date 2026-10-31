@@ -171,3 +171,26 @@ def test_access_control_quiet_when_admin_denied_or_html():
     findings = check_access_control(tools, [])
     tools.client.close()
     assert findings == []
+
+
+def test_detector_registry_runs_registered_and_isolates_failures():
+    # The registry is the single extension point: a registered detector runs, and
+    # one that raises is skipped without aborting the rest of the battery.
+    from app.detectors import DetectorContext, run_all, STANDING_DETECTORS
+    from app.schemas import Finding
+
+    def ok(ctx):
+        return [Finding(category="Demo Registry Check", severity="low", url="http://x",
+                        parameter=None, evidence="e", recommendation="r")]
+
+    def boom(ctx):
+        raise RuntimeError("detector crashed")
+
+    added = [("demo-ok", ok), ("demo-boom", boom)]
+    STANDING_DETECTORS.extend(added)
+    try:
+        categories = [f.category for f in run_all(DetectorContext(tools=None, pages=[]))]
+    finally:
+        for item in added:
+            STANDING_DETECTORS.remove(item)
+    assert "Demo Registry Check" in categories  # registered detector ran; boom did not abort it
