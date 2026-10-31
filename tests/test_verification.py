@@ -179,6 +179,30 @@ def test_crawl_extracts_query_params_as_endpoints(monkeypatch):
     assert qp and set(qp[0]["parameters"]) == {"category", "sort"} and qp[0]["method"] == "GET"
 
 
+def test_json_body_sqli_probe_detected(monkeypatch):
+    # The attack stage can inject into a JSON body field; a quote that breaks a legacy
+    # concatenated query yields 500 while the benign baseline fails auth with 401,
+    # which the status-diff oracle flags. Only the vulnerable field is reported.
+    import json as _json
+    from app.config import settings
+    monkeypatch.setattr(settings, "browser_scan_enabled", False)
+    def handler(request):
+        body = _json.loads(request.content.decode() or "{}")
+        if body.get("currentPassword") == "'":
+            return httpx.Response(500, text="server error", headers={"content-type": "application/json"})
+        return httpx.Response(401, text='{"error":"invalid"}', headers={"content-type": "application/json"})
+    tools = WebTools("http://localhost/api")
+    tools.client.close()
+    tools.client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    page = {"forms": [], "endpoints": [{"url": "http://localhost/api/profile/password", "method": "POST",
+            "parameters": [], "json_fields": ["currentPassword", "newPassword", "confirmPassword"]}]}
+    probes = AttackAgent(tools).run([page], ["basic_sqli"])
+    findings = VerificationAgent().run(probes)
+    tools.client.close()
+    assert [f.category for f in findings] == ["Potential SQL Injection"]
+    assert findings[0].parameter == "currentPassword"
+
+
 def test_sqli_status_diff_fires_when_baseline_is_4xx():
     # Login endpoint: benign input -> 401, single quote -> 500 (hidden SQL error).
     probe = AttackProbe("basic_sqli", "http://localhost/api/login", "username",

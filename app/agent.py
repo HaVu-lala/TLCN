@@ -98,6 +98,15 @@ class AttackAgent:
                         baseline = self._request_endpoint(endpoint, name, "sentinel-baseline")
                         result = self._request_endpoint(endpoint, name, "'")
                         probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"], baseline["body"], baseline_status=baseline["status"]))
+                # Inject into JSON body fields (e.g. an API that takes a JSON payload),
+                # filling the other fields so required-field validation does not block the path.
+                if "basic_sqli" in plan and endpoint.get("json_fields"):
+                    method = endpoint.get("method", "POST")
+                    base = {field: "sentinel-fill" for field in endpoint["json_fields"]}
+                    for name in endpoint["json_fields"]:
+                        baseline = self.tools.request(endpoint["url"], method, json_body={**base, name: "sentinel-baseline"})
+                        result = self.tools.request(endpoint["url"], method, json_body={**base, name: "'"})
+                        probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"], baseline["body"], baseline_status=baseline["status"]))
         if "idor" in plan and self.tools.target_url.rstrip("/").endswith(("/demo", "/demo-safe")):
             object_url = f"{self.tools.target_url}/object"
             if self.comparison_tools and self.tools.client.headers.get("X-Lab-User") == "user-1" and self.comparison_tools.client.headers.get("X-Lab-User") == "user-2":

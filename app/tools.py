@@ -1,3 +1,4 @@
+import json as _json
 import re
 from collections import deque
 from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
@@ -25,6 +26,7 @@ class WebTools:
             event_hooks={"request": [self._guard_request]},
         )
         self.login_spec = login
+        self.session_token: str | None = None
         if login:
             self._login(login)
 
@@ -84,6 +86,7 @@ class WebTools:
             raise ValueError("Lab login failed; verify the authorized lab credentials and login URL.")
         if token:
             self.client.headers["Authorization"] = f"Bearer {token}"
+            self.session_token = token
         self.authentication_status = "authenticated"
 
     def _attempt_login(self, login_url: str, *, json: dict | None = None, data: dict | None = None) -> str | None:
@@ -248,6 +251,15 @@ class WebTools:
         try:
             with sync_playwright() as playwright:
                 browser, context = self._browser_context(playwright)
+                # If we hold a session token, seed it into localStorage under common keys so
+                # single-page apps that keep auth there (not in a cookie) render as logged in,
+                # exposing authenticated menus and the deep pages linked from them.
+                if self.session_token:
+                    context.add_init_script(
+                        "try { var t = " + _json.dumps(self.session_token) + "; "
+                        "['auth_token','token','jwt','access_token','authToken','accessToken']"
+                        ".forEach(function(k){ localStorage.setItem(k, t); }); } catch (e) {}"
+                    )
                 page = context.new_page()
                 network_requests: list[dict] = []
 
@@ -256,12 +268,22 @@ class WebTools:
                     excluded = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2")
                     ignored_prefixes = ("/assets/", "/socket.io/", "/static/")
                     if parsed.netloc == urlparse(self.target_url).netloc and not parsed.path.endswith(excluded) and not parsed.path.startswith(ignored_prefixes):
-                        network_requests.append({
+                        entry = {
                             "url": request.url,
                             "method": request.method,
                             "parameters": [name for name, _ in parse_qsl(parsed.query, keep_blank_values=True)],
                             "source": "browser-network",
-                        })
+                        }
+                        # Record JSON body field names so the attack stage can inject into
+                        # a JSON body parameter (e.g. a password-change API), not only query/form.
+                        if request.method in ("POST", "PUT", "PATCH"):
+                            try:
+                                body = _json.loads(request.post_data or "")
+                                if isinstance(body, dict):
+                                    entry["json_fields"] = [k for k in body.keys() if isinstance(k, str)]
+                            except (ValueError, TypeError):
+                                pass
+                        network_requests.append(entry)
 
                 page.on("request", capture_request)
                 page.goto(pages[0]["url"], wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
@@ -288,49 +310,118 @@ class WebTools:
                         {"action": page.url, "method": "GET", "inputs": [item], "source": "browser"}
                         for item in inputs
                     )
-                browser_routes = page.locator("a[href]").evaluate_all(
+                # Breadth-first harvest of same-origin links from the fully rendered DOM,
+                # following them several levels deep so pages reachable only after JavaScript
+                # runs - and only after login (menus, orders, detail pages) - enter the crawl
+                # surface too. Deeper coverage is favoured over speed here. We only navigate
+                # and read links/endpoints; no input is touched, so no fragile DOM interaction.
+                link_filter_js = (
                     """elements => elements.map(element => element.href).filter(href => {
-                        const url = new URL(href, window.location.href);
-                        return url.origin === window.location.origin && (url.pathname.startsWith('/WebGoat') || url.hash.startsWith('#/'));
+                        try {
+                            const url = new URL(href, window.location.href);
+                            if (url.origin !== window.location.origin) return false;
+                            if (/\\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|pdf|zip|mp4|webp)(\\?|$)/i.test(url.pathname)) return false;
+                            return true;
+                        } catch (e) { return false; }
                     })"""
                 )
                 known_urls = {entry["url"] for entry in pages}
-                for route in browser_routes:
-                    if any(part in urlparse(route).path.lower() for part in ("logout", "signout", "register", "registration", "/login")):
+                # Visit at most one URL per distinct path+fragment; testing one instance of
+                # a parameterised page (e.g. one detail?id=) is enough and keeps it bounded.
+                seen_keys = set()
+                for entry in pages:
+                    pe = urlparse(entry.get("url", ""))
+                    seen_keys.add((pe.path, pe.fragment))
+                queue = deque(page.locator("a[href]").evaluate_all(link_filter_js))
+                visits = 0
+                visit_budget = settings.max_crawl_pages * 4
+                while queue and len(pages) < settings.max_crawl_pages and visits < visit_budget:
+                    route = queue.popleft()
+                    visits += 1
+                    parsed_route = urlparse(route)
+                    if any(part in parsed_route.path.lower() for part in ("logout", "signout", "register", "registration", "/login")):
                         continue
-                    if len(pages) >= settings.max_crawl_pages or route in known_urls:
+                    route_key = (parsed_route.path, parsed_route.fragment)
+                    if route in known_urls or route_key in seen_keys:
                         continue
-                    page.goto(route, wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
-                    page.wait_for_timeout(400)
-                    dismiss = page.get_by_role("button", name="Close Welcome Banner")
-                    if dismiss.count():
-                        dismiss.first.click()
-                    route_inputs = page.locator("input, textarea").evaluate_all(
-                        """elements => elements.filter(element => !element.hidden && !element.disabled && !['checkbox', 'radio', 'hidden', 'submit', 'button', 'file', 'range', 'color'].includes(element.type)).map((element, index) => ({
-                            name: element.name || `browser_input_${index}`,
-                            type: element.type || 'text',
-                            selector: element.id ? `#${element.id}` : (element.name ? `${element.tagName.toLowerCase()}[name=\\\"${element.name}\\\"]` : `${element.tagName.toLowerCase()}:nth-of-type(${index + 1})`)
-                        }))"""
-                    )
+                    known_urls.add(route)
+                    seen_keys.add(route_key)
+                    try:
+                        page.goto(route, wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
+                        page.wait_for_timeout(400)
+                        dismiss = page.get_by_role("button", name="Close Welcome Banner")
+                        if dismiss.count():
+                            dismiss.first.click()
+                        child_links = page.locator("a[href]").evaluate_all(link_filter_js)
+                    except Exception:
+                        child_links = []
+                    for child in child_links:
+                        child_parsed = urlparse(child)
+                        child_key = (child_parsed.path, child_parsed.fragment)
+                        if child not in known_urls and child_key not in seen_keys:
+                            queue.append(child)
+                    route_endpoints = []
+                    route_params = [name for name, _ in parse_qsl(parsed_route.query, keep_blank_values=True)]
+                    if route_params:
+                        route_endpoints.append({"url": route.split("?", 1)[0], "method": "GET",
+                                                "parameters": sorted(set(route_params)), "source": "browser-link"})
+                    # Fetch server-rendered HTML routes over HTTP to mine forms/scripts for
+                    # API endpoints (e.g. a change-password JSON API) that no request revealed.
+                    last_seg = parsed_route.path.rsplit("/", 1)[-1]
+                    looks_html = parsed_route.path.lower().endswith((".jsp", ".html", ".htm", ".php")) or "." not in last_seg
+                    if looks_html:
+                        try:
+                            resp = self.client.get(route)
+                            if "html" in resp.headers.get("content-type", ""):
+                                route_endpoints.extend(self._credential_json_endpoints(route, resp.text))
+                        except (httpx.HTTPError, ScopeError):
+                            pass
                     pages.append(
                         {
                             "url": route,
                             "status": 200,
                             "content_type": "text/html",
                             "browser_rendered": True,
-                            "forms": [
-                                {"action": route, "method": "GET", "inputs": [item], "source": "browser"}
-                                for item in route_inputs
-                            ],
+                            "forms": [],
+                            "endpoints": route_endpoints,
                         }
                     )
-                    known_urls.add(route)
                 pages[0]["browser_rendered"] = True
                 pages[0]["endpoints"] = self._merge_endpoints(pages[0].get("endpoints", []), network_requests)
                 context.close()
                 browser.close()
         except Exception as exc:
             pages[0]["browser_error"] = str(exc)
+
+    def _credential_json_endpoints(self, url: str, html: str) -> list[dict]:
+        """Discover a credential-change JSON API without submitting the form.
+
+        Many apps render a change-password form in the page HTML while the actual
+        request is a JSON fetch to an /api/...password endpoint declared in the page
+        scripts. When a form with a password field coexists with such a path, register
+        that path as a JSON endpoint whose fields are the form's input names, so the
+        attack stage can probe it. The oracle still decides any finding.
+        """
+        endpoints: list[dict] = []
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+        except Exception:  # noqa: BLE001
+            return endpoints
+        script_text = " ".join(script.get_text() for script in soup.find_all("script"))
+        # Match an /api or /auth path anywhere, including inside template literals
+        # such as `${contextPath}/api/profile/password`, not only quoted string literals.
+        api_paths = re.findall(r"(/(?:api|auth)/[A-Za-z0-9_][A-Za-z0-9_./-]*)", script_text)
+        pwd_api = next((p for p in api_paths if "password" in p.lower()), None)
+        if not pwd_api:
+            return endpoints
+        for form in soup.find_all("form"):
+            has_password = any(field.get("type") == "password" for field in form.find_all("input"))
+            fields = [field.get("name") for field in form.find_all(["input", "textarea"]) if field.get("name")]
+            if has_password and fields:
+                endpoints.append({"url": urljoin(url, pwd_api), "method": "POST", "parameters": [],
+                                  "json_fields": fields, "source": "js-resolved-json"})
+                break
+        return endpoints
 
     @staticmethod
     def _merge_endpoints(existing: list[dict], discovered: list[dict]) -> list[dict]:
@@ -339,6 +430,8 @@ class WebTools:
             key = (item["method"], item["url"])
             if key in merged:
                 merged[key]["parameters"] = sorted(set(merged[key].get("parameters", [])) | set(item.get("parameters", [])))
+                if item.get("json_fields"):
+                    merged[key]["json_fields"] = sorted(set(merged[key].get("json_fields", [])) | set(item["json_fields"]))
             else:
                 merged[key] = item
         return list(merged.values())
@@ -371,10 +464,10 @@ class WebTools:
             browser.close()
             return result
 
-    def request(self, url: str, method: str = "GET", params: dict | None = None, data=None, headers: dict | None = None) -> dict:
+    def request(self, url: str, method: str = "GET", params: dict | None = None, data=None, headers: dict | None = None, json_body=None) -> dict:
         self._guard_request(httpx.Request(method, url))
         try:
-            response = self.client.request(method, url, params=params, data=data, headers=headers)
+            response = self.client.request(method, url, params=params, data=data, headers=headers, json=json_body)
         except httpx.HTTPError as exc:
             return {"url": url, "status": 0, "headers": {}, "body": "", "error": str(exc)}
         # Keep structured API responses parseable when a probe returns many products.
