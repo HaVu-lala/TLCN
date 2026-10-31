@@ -1,0 +1,107 @@
+[
+  {
+    "Path": "D:\\VirtualBox\\GNS3 VM",
+    "Bytes": 3782764953.0,
+    "Directory": true
+  },
+  {
+    "Path": "D:\\VirtualBox\\GNS3 VM.ova",
+    "Bytes": 1011386368,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\VirtualBox\\GNS3-2.2.54-all-in-one-regular.exe",
+    "Bytes": 284900332.0,
+    "Directory": true
+  },
+  {
+    "Path": "D:\\VirtualBox\\VMware-workstation-full-17.6.4-24832109.exe",
+    "Bytes": 425426160.0,
+    "Directory": true
+  },
+  {
+    "Path": "D:\\Downloads\\basic-miktex-25.12-x64.exe",
+    "Bytes": 148882184,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\burpsuite_community_windows-x64_v2026_2_3.exe",
+    "Bytes": 383741968,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\CiscoPacketTracer_901_win_64bit.exe",
+    "Bytes": 309404608,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\Docker Desktop Installer.exe",
+    "Bytes": 631737776,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\FortiClientSetup_6.4.6_x64.exe",
+    "Bytes": 177971712,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\Git-2.53.0.2-64-bit.exe",
+    "Bytes": 64564304,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\GitHubDesktopSetup-x64.exe",
+    "Bytes": 187968472,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\LDPlayer9_vn_ld_401106_ld.exe_CjwKCAjw46HPBhAMEiwASZpLRGbHy7blhV3K-NarafN-aKxzXGlQA7GBYrqp2X-KyNolU9XOTmMp_hoCufMQAvD_BwE_ld_ld_ld.exe",
+    "Bytes": 3526632,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\node-v24.14.0-x64.msi",
+    "Bytes": 32280576,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\OpenJDK25U-jdk_x64_windows_hotspot_25.0.2_10.msi",
+    "Bytes": 115920896,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\pgadmin4-9.13-x64.exe",
+    "Bytes": 226013144,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\putty-64bit-0.83-installer.msi",
+    "Bytes": 3831808,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\python-3.12.10-amd64.exe",
+    "Bytes": 26964224,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\python-3.14.3-amd64.exe",
+    "Bytes": 30213192,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\SteamSetup.exe",
+    "Bytes": 2380800,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\VSCodeUserSetup-x64-1.111.0.exe",
+    "Bytes": 131481128,
+    "Directory": false
+  },
+  {
+    "Path": "D:\\Downloads\\xnafx40_redist.msi",
+    "Bytes": 7054848,
+    "Directory": false
+  }
+]

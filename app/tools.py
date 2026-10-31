@@ -1,3 +1,4 @@
+import re
 from collections import deque
 from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 
@@ -113,6 +114,21 @@ class WebTools:
                         if field.get("name")
                     ]
                     forms.append({"action": urljoin(url, form.get("action") or url), "method": (form.get("method") or "get").upper(), "inputs": inputs})
+                # SPA forms submit via fetch(); when a form has no real action, try to
+                # resolve its submit endpoint from same-origin API paths in inline scripts.
+                script_text = " ".join(script.get_text() for script in soup.find_all("script"))
+                api_paths = re.findall(r"""['"](/(?:api|auth)/[A-Za-z0-9_][A-Za-z0-9_./-]*)['"]""", script_text)
+                if api_paths:
+                    for form in forms:
+                        if form.get("source") or form["action"].rstrip("/") != url.rstrip("/"):
+                            continue
+                        has_password = any(f.get("type") == "password" for f in form["inputs"])
+                        if not has_password:
+                            continue
+                        target = next((p for p in api_paths if any(k in p.lower() for k in ("login", "auth", "signin"))), api_paths[0])
+                        form["action"] = urljoin(url, target)
+                        form["method"] = "POST"
+                        form["source"] = "js-resolved-endpoint"
                 for link in soup.find_all("a", href=True):
                     next_url = urljoin(url, link["href"])
                     link_path = urlparse(next_url).path.lower()
@@ -132,6 +148,12 @@ class WebTools:
             pages.append({"url": url, "status": response.status_code, "content_type": content_type,
                            "headers": dict(response.headers), "body": response.text[:8000],
                            "forms": forms, "endpoints": []})
+            # Treat reflected GET query parameters as injectable endpoints so the
+            # attack stage can test them for reflected XSS / error-based SQLi.
+            query_params = [name for name, _ in parse_qsl(urlparse(url).query, keep_blank_values=True)]
+            if query_params:
+                pages[-1]["endpoints"].append({"url": url.split("?", 1)[0], "method": "GET",
+                                               "parameters": sorted(set(query_params)), "source": "query-param"})
             if '<title>Sentinel Demo Lab</title>' in response.text and urlparse(url).path == "/demo":
                 pages[-1]["fixture_id"] = "sentinel-demo-v2"
             elif '<title>Sentinel Safe Demo Lab</title>' in response.text and urlparse(url).path == "/demo-safe":

@@ -128,3 +128,46 @@ def test_extended_lab_checks_quiet_when_login_not_rejecting():
     findings = extended_lab_checks(tools, [{"lab": "juice-shop"}])
     tools.client.close()
     assert findings == []
+
+
+def test_browser_xss_returns_empty_when_disabled(monkeypatch):
+    from app.config import settings
+    from app.browser_xss import browser_reflected_xss
+    monkeypatch.setattr(settings, "browser_scan_enabled", False)
+    assert browser_reflected_xss(None, [{"endpoints": [{"url": "http://x/a", "method": "GET", "parameters": ["q"]}]}]) == []
+
+
+def test_browser_xss_returns_empty_when_no_get_params(monkeypatch):
+    from app.config import settings
+    from app.browser_xss import browser_reflected_xss
+    monkeypatch.setattr(settings, "browser_scan_enabled", True)
+    # không có GET param -> không gọi trình duyệt, trả rỗng
+    assert browser_reflected_xss(None, [{"endpoints": [{"url": "http://x/a", "method": "POST", "parameters": ["q"]}]}]) == []
+
+
+def test_access_control_flags_admin_endpoint_returning_data():
+    import httpx
+    from app.access_control import check_access_control
+    def handler(r):
+        if r.url.path == "/api/admin/dashboard":
+            return httpx.Response(200, json={"stats": {"totalUsers": 18, "totalOrders": 38}}, headers={"content-type": "application/json"})
+        return httpx.Response(401, json={"error": "Unauthorized"}, headers={"content-type": "application/json"})
+    tools = _mock_tools("http://localhost:8081/", handler)
+    findings = check_access_control(tools, [])
+    tools.client.close()
+    assert [f.category for f in findings] == ["Broken Access Control"]
+    assert "/api/admin/dashboard" in findings[0].url
+
+
+def test_access_control_quiet_when_admin_denied_or_html():
+    import httpx
+    from app.access_control import check_access_control
+    # 401 for admin APIs, and SPA HTML 200 for everything else -> no finding.
+    def handler(r):
+        if "admin" in r.url.path:
+            return httpx.Response(401, json={"error": "Unauthorized"}, headers={"content-type": "application/json"})
+        return httpx.Response(200, text="<html>app shell</html>", headers={"content-type": "text/html"})
+    tools = _mock_tools("http://localhost:3000/", handler)
+    findings = check_access_control(tools, [])
+    tools.client.close()
+    assert findings == []

@@ -1,0 +1,23 @@
+const assert = require('node:assert/strict');
+const { createReader, observe } = require('./network-cache.cjs');
+(async () => {
+  let clones = 0, finish;
+  const body = new Promise(resolve => { finish = resolve; });
+  const response = { clone() { clones++; return { json: () => body }; } };
+  const reader = createReader();
+  let observed = false;
+  assert.equal(observe(response, reader, () => { observed = true; }), response, 'Game receives its response immediately');
+  assert.equal(observed, false, 'Parsing is not awaited on the game fetch path');
+  const reads = Array.from({ length: 20 }, () => reader(response));
+  await Promise.resolve();
+  assert.equal(clones, 1, '20 consumers clone and parse only once');
+  finish({ ok: true });
+  assert.ok((await Promise.all(reads)).every(x => x.ok));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(observed, true);
+  let errors = 0;
+  observe({ clone() { errors++; throw Error('Bad response'); } }, reader, () => assert.fail('Invalid JSON was delivered'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(errors, 1, 'Malformed responses do not break the game fetch chain');
+  console.log('PASS: shared JSON parse, immediate fetch response, asynchronous observer, malformed-response isolation');
+})().catch(error => { console.error(error); process.exitCode = 1; });

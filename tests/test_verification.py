@@ -147,3 +147,61 @@ def test_markdown_export_escapes_active_evidence(monkeypatch, tmp_path):
     assert "<script>" not in response.text
     assert "&lt;script&gt;" in response.text
     assert "stored_xss: 0.5" in response.text
+
+
+def test_sqli_status_diff_oracle_flags_hidden_error():
+    # Dấu nháy gây HTTP 500 trong khi input lành tính trả 200, dù lỗi SQL bị ẩn body.
+    probe = AttackProbe("basic_sqli", "http://localhost/api/login", "username",
+                        body="{\"error\":\"Login failed\"}", status=500,
+                        baseline_body="{\"error\":\"Invalid\"}", baseline_status=200, payload="'")
+    cats = [f.category for f in VerificationAgent().run([probe])]
+    assert cats == ["Potential SQL Injection"]
+
+
+def test_sqli_status_diff_not_flagged_when_baseline_also_errors():
+    probe = AttackProbe("basic_sqli", "http://localhost/x", "q",
+                        body="err", status=500, baseline_body="err", baseline_status=500, payload="'")
+    assert VerificationAgent().run([probe]) == []
+
+
+def test_crawl_extracts_query_params_as_endpoints(monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "browser_scan_enabled", False)
+    import httpx
+    tools = WebTools("http://localhost:9000/catalog?category=x&sort=new")
+    tools.client.close()
+    tools.client = httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, text="<html><body>ok</body></html>", headers={"content-type": "text/html"})),
+        follow_redirects=True, event_hooks={"request": [tools._guard_request]})
+    pages = tools.crawl()
+    tools.client.close()
+    qp = [e for p in pages for e in p.get("endpoints", []) if e.get("source") == "query-param"]
+    assert qp and set(qp[0]["parameters"]) == {"category", "sort"} and qp[0]["method"] == "GET"
+
+
+def test_sqli_status_diff_fires_when_baseline_is_4xx():
+    # Login endpoint: benign input -> 401, single quote -> 500 (hidden SQL error).
+    probe = AttackProbe("basic_sqli", "http://localhost/api/login", "username",
+                        body="{\"error\":\"fail\"}", status=500,
+                        baseline_body="{\"error\":\"Invalid credentials\"}", baseline_status=401, payload="'")
+    assert [f.category for f in VerificationAgent().run([probe])] == ["Potential SQL Injection"]
+
+
+def test_crawl_resolves_spa_login_form_to_api_endpoint(monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "browser_scan_enabled", False)
+    import httpx
+    html = ("<html><body><form id='loginForm'>"
+            "<input name='username' type='text'><input name='password' type='password'>"
+            "</form><script>fetch(contextPath + '/api/login', {method:'POST'})</script>"
+            "</body></html>")
+    tools = WebTools("http://localhost:9100/login.jsp")
+    tools.client.close()
+    tools.client = httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, text=html, headers={"content-type": "text/html"})),
+        follow_redirects=True, event_hooks={"request": [tools._guard_request]})
+    pages = tools.crawl()
+    tools.client.close()
+    forms = [f for p in pages for f in p.get("forms", [])]
+    assert forms and forms[0]["action"].endswith("/api/login") and forms[0]["method"] == "POST"
+    assert forms[0].get("source") == "js-resolved-endpoint"

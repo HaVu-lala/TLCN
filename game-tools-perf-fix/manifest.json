@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Công cụ game (Vứt đồ + Câu cá + Nhặt đồ + Đánh + Săn boss + Đập đồ + Đi tới map) — sửa tìm đường",
+  "version": "2.6.5",
+  "description": "Vứt hàng loạt trang bị theo phẩm chất và bot câu cá, có bảng điều khiển ngay trong trang game.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meono.phanvanhoanganh.com/*",
+        "https://*.meono.phanvanhoanganh.com/*"
+      ],
+      "js": [
+        "game-tools.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}
