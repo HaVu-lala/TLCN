@@ -12,6 +12,26 @@ from app.schemas import LoginRequest
 from app.scope import ScopeError
 
 
+# --- Nhật ký trực tiếp dùng chung: giao diện theo dõi quá trình quét theo thời gian thực ---
+LIVE_LOG: dict = {"entries": [], "running": False, "scan": 0}
+
+
+def live_reset() -> None:
+    LIVE_LOG["entries"] = []
+    LIVE_LOG["running"] = True
+    LIVE_LOG["scan"] += 1
+
+
+def live_done() -> None:
+    LIVE_LOG["running"] = False
+
+
+def live_snapshot(after: int = 0) -> dict:
+    entries = LIVE_LOG["entries"]
+    return {"entries": entries[after:], "total": len(entries),
+            "running": LIVE_LOG["running"], "scan": LIVE_LOG["scan"]}
+
+
 class WebTools:
     def __init__(self, target_url: str, session_headers: dict[str, str] | None = None, login: LoginRequest | None = None):
         normalized_target = target_url.rstrip("/")
@@ -501,5 +521,11 @@ class WebTools:
             self.request_log = []
         if len(self.request_log) < 500:
             ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-            self.request_log.append({"seq": len(self.request_log) + 1, "ts": ts,
-                                     "method": method, "url": url, "args": args, "status": status})
+            entry = {"seq": len(self.request_log) + 1, "ts": ts,
+                     "method": method, "url": url, "args": args, "status": status}
+            self.request_log.append(entry)
+            # Đẩy vào buffer dùng chung để giao diện cập nhật thời gian thực.
+            LIVE_LOG["entries"].append(entry)
+            # Log trực tiếp ra console để theo dõi quá trình quét theo thời gian thực.
+            detail = f" [{args}]" if args else ""
+            print(f"[QUET] {ts} {method} {url} -> HTTP {status}{detail}", flush=True)

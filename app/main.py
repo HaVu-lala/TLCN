@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.agent import PentestAgent
+from app.tools import live_reset, live_done, live_snapshot
 from app.schemas import ScanRequest, ScanResult
 from app.scope import ScopeError, validate_target
 from app.repository import ScanRepository
@@ -226,6 +227,12 @@ def safe_object(object_id: str = Query("1", alias="id"), x_lab_user: str | None 
     return f"<html><body>Owner: {owner}<p>Secret project data</p></body></html>"
 
 
+@app.get("/api/live-log")
+def live_log(after: int = 0) -> dict:
+    """Nhật ký yêu cầu theo thời gian thực của lần quét đang chạy (giao diện hỏi liên tục)."""
+    return live_snapshot(after)
+
+
 @app.post("/api/scans", response_model=ScanResult)
 def create_scan(request: ScanRequest) -> ScanResult:
     try:
@@ -234,6 +241,7 @@ def create_scan(request: ScanRequest) -> ScanResult:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     started = perf_counter()
     agent = None
+    live_reset()
     try:
         agent = PentestAgent(target, session_headers=request.session_headers, comparison_session_headers=request.comparison_session_headers, login=request.login)
         scan_id, pages, findings = agent.run()
@@ -242,6 +250,7 @@ def create_scan(request: ScanRequest) -> ScanResult:
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     finally:
+        live_done()
         if agent:
             agent.recon.tools.client.close()
             if agent.attack.comparison_tools:

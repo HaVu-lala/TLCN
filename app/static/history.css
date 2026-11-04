@@ -1,1 +1,16 @@
-.history{padding:28px 0 10px}.history-list{border-top:1px solid var(--line)}.history-item{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:18px;align-items:center;border-bottom:1px solid var(--line);padding:14px 0;font-size:13px}.history-item b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.history-item small{display:block;color:var(--muted);font:10px 'DM Mono';margin-top:5px}.history-item>span{font:11px 'DM Mono';color:var(--orange)}.history-item a{color:var(--ink);font:11px 'DM Mono';text-transform:uppercase;text-decoration:none;border-bottom:2px solid var(--lime)}.history-item a:hover{color:var(--orange)}@media(max-width:720px){.history-item{grid-template-columns:1fr auto}.history-item a{grid-column:2;grid-row:1}.history-item>span{grid-column:2;grid-row:2}}
+/* Campaign history - dark console theme */
+.history-list{margin-top:4px}
+.history-item{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:18px;align-items:center;
+  border-bottom:1px solid var(--line);padding:13px 0;font-size:13px}
+.history-item:last-child{border-bottom:0}
+.history-item b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:600}
+.history-item small{display:block;color:var(--muted);font:10px var(--mono);margin-top:5px}
+.history-item>span{font:11px var(--mono);color:var(--accent-2)}
+.history-item a{color:var(--accent);font:600 11px var(--mono);text-transform:uppercase;text-decoration:none;
+  border:1px solid var(--line-2);padding:5px 11px;border-radius:6px}
+.history-item a:hover{border-color:var(--accent);background:rgba(54,211,154,.08)}
+@media(max-width:760px){
+  .history-item{grid-template-columns:1fr auto}
+  .history-item a{grid-column:2;grid-row:1}
+  .history-item>span{grid-column:2;grid-row:2}
+}
