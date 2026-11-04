@@ -157,15 +157,25 @@ class VerificationAgent:
     name = "VerificationAgent"
 
     def run(self, probes: list[AttackProbe]) -> list[Finding]:
+        # [ORACLE] Đây là nơi KẾT LUẬN lỗ hổng dựa trên bằng chứng (không do AI).
+        # Mỗi nhánh dưới đây ứng với một kịch bản thực nghiệm (Chương 3):
+        #   - reflected_xss / stored_xss  -> Thực nghiệm 2 (XSS, A05)
+        #   - basic_sqli                  -> Thực nghiệm 1 (SQL Injection, A05)
+        #   - idor                        -> Thực nghiệm 3 (BOLA/IDOR, A01)
         findings: list[Finding] = []
         for probe in probes:
             soup = BeautifulSoup(probe.body, "html.parser") if "html" in probe.content_type and "<" in probe.body else None
             expected = BeautifulSoup(probe.payload or "<script>alert(1)</script>", "html.parser").find(["script", "img"])
             marker_present = bool(soup and expected and any(tag == expected and not tag.find_parent(["textarea", "title", "style", "template", "noscript"]) for tag in soup.find_all(expected.name)))
+            # [Thực nghiệm 2 - Reflected XSS] Chỉ công nhận khi marker phản chiếu trong ngữ cảnh HTML hoạt động và phản hồi thành công.
             if probe.kind == "reflected_xss" and "html" in probe.content_type and marker_present and 200 <= probe.status < 300:
                 findings.append(Finding(category="Reflected XSS", severity="medium", url=probe.url, parameter=probe.parameter, evidence="The unique controlled marker was reflected as an HTML script or event handler. Static HTML evidence; browser execution was not verified.", recommendation="Encode output by context and apply a restrictive Content-Security-Policy."))
+            # [Thực nghiệm 2 - Stored XSS] Marker được lưu phía máy chủ và trả lại ở lần đọc sau (trong ngữ cảnh HTML hoạt động).
             if probe.kind == "stored_xss" and "html" in probe.content_type and marker_present and 200 <= probe.status < 300:
                 findings.append(Finding(category="Stored XSS", severity="high", url=probe.url, parameter=probe.parameter, evidence="The controlled marker was persisted and returned by a later response.", recommendation="Validate and contextually encode stored content before rendering it. Apply a restrictive Content-Security-Policy."))
+            # [Thực nghiệm 1 - SQL Injection] Oracle HAI NHÁNH:
+            #   Nhánh A: thấy chữ ký lỗi CSDL ở phản hồi tiêm mà baseline (thành công) không có.
+            #   Nhánh B: dấu nháy ' gây lỗi 5xx trong khi đầu vào lành tính trả mã bình thường (lỗi bị giấu).
             if probe.kind == "basic_sqli":
                 _sig = r"(sql syntax|sqlite[_ ]error|SequelizeDatabaseError|SQLSyntaxErrorException|syntax error)"
                 sql_error = re.search(_sig, probe.body, re.I)
@@ -180,6 +190,7 @@ class VerificationAgent:
                     findings.append(Finding(category="Potential SQL Injection", severity="medium", url=probe.url, parameter=probe.parameter, evidence=f"A single-quote payload triggered an HTTP {probe.status} server error while benign input returned HTTP {probe.baseline_status}; the database error was suppressed in the response body.", recommendation="Use parameterized queries and handle malformed input without returning server errors."))
             if probe.kind == "sensitive_config" and probe.status == 200 and '"config"' in probe.body:
                 findings.append(Finding(category="Potential Sensitive Configuration Exposure", severity="medium", url=probe.url, parameter=None, evidence="An administrative application-configuration response was accessible without an authorization denial.", recommendation="Require authorization for administrative configuration endpoints and avoid exposing internal configuration to unauthenticated clients."))
+            # [Thực nghiệm 3 - BOLA/IDOR] Phiên thứ hai đọc được đúng đối tượng của phiên thứ nhất -> thiếu phân quyền cấp đối tượng.
             if probe.kind == "idor" and probe.status == probe.baseline_status == 200 and probe.baseline_body:
                 if probe.body == probe.baseline_body and "Secret project data" in probe.body and "Owner: user-1" in probe.body:
                     evidence = "A second authorized session accessed the first session's object without an authorization denial."
@@ -255,6 +266,33 @@ class PentestAgent:
         return str(uuid.uuid4()), toolbox.pages, findings
 
     def _run_deterministic(self) -> tuple[str, list[dict], list[Finding]]:
+        # ===================================================================
+        # BAN DO QUY TRINH QUET (che do tat dinh) - TUNG BUOC: FILE / DONG
+        # -------------------------------------------------------------------
+        # B1. Recon (thu thap be mat):   self.recon.run()        -> agent.py:37  -> WebTools.crawl() app/tools.py
+        # B2. Memory (truy hoi phien truoc): self.memory.recall(...) -> app/memory.py
+        # B3. Planning (AI chon test):   self.planner.run(...)   -> agent.py:47 (PlanningAgent, dung DeepSeek)
+        # B4. Attack (GUI payload):      self.attack.run(...)    -> agent.py:68 (AttackAgent)
+        #        [TN2] reflected_xss : form agent.py:76-78 ; endpoint agent.py:94-96
+        #        [TN2] stored_xss    : form agent.py:80-83
+        #        [TN1] basic_sqli    : form agent.py:85-87 ; endpoint agent.py:98-100 ; JSON body agent.py:103-109
+        #        [TN3] idor          : agent.py:110-115
+        # B5. Verify (ORACLE ket luan): self.verifier.run(probes) -> agent.py:159 (VerificationAgent.run)
+        #        [TN2] reflected_xss : agent.py:171 ; stored_xss : agent.py:174
+        #        [TN1] basic_sqli (oracle 2 nhanh): agent.py:179-190
+        #        [TN3] idor          : agent.py:194-199
+        # B6. Oracle chuyen biet lab:   check_lab(...)           -> app/labs.py:14   [TN1/TN2/TN3 tren Juice Shop/WebGoat]
+        # B7. ReAct refine (1 vong bo sung): self.attack.refine(...) -> agent.py:131
+        # B8. Standing detectors (registry): run_all(ctx)        -> app/detectors.py:46
+        #        Moi kich ban = 1 file trong app/scenarios/ :
+        #        [TN2] tn2_xss.py            A05 reflected XSS  -> app/browser_xss.py:41
+        #        [TN3] tn3_access_control.py A01 forced-browse  -> app/access_control.py:29 ; BOLA 2 phien -> tn3 + VerificationAgent
+        #        [TN4] tn4_passive_audit.py  A02+A03+A04 thu dong -> app/passive.py:159 (passive_findings) ; lab A02 -> app/labs.py:201 (lab_misconfig_checks)
+        #        [TN7] tn7_auth.py           A07 form -> app/auth_checks.py:55 (check_authentication) ; lab -> app/labs.py:213 (lab_auth_failure_checks)
+        # B9. Dedup + bao cao:          ReportingAgent.run(...)  -> agent.py:206
+        # Ghi chu: che do function-calling di qua app/toolbox.py (Tool 3 dong 101, Tool 4 dong 115)
+        #          nhung Buoc verify/detector van la cung code o tren.
+        # ===================================================================
         self.trace.append(AgentTrace(agent="SessionManager", status="completed", detail=f"Session mode: {self.authentication_status}. Credentials are not persisted."))
         pages = self.recon.run()
         endpoint_count = sum(len(page.get("endpoints", [])) for page in pages)

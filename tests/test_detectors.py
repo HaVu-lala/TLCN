@@ -159,6 +159,103 @@ def test_access_control_flags_admin_endpoint_returning_data():
     assert "/api/admin/dashboard" in findings[0].url
 
 
+def test_open_redirect_flags_external_location():
+    from app.open_redirect import check_open_redirect, PAYLOAD_HOST
+    # Ung dung ngay tho: tra ve 302 voi Location bang dung URL nguoi dung cung cap.
+    def handler(r):
+        nxt = r.url.params.get("next", "")
+        if nxt:
+            return httpx.Response(302, headers={"location": nxt})
+        return httpx.Response(200, text="ok")
+    tools = _mock_tools("http://localhost/app", handler)
+    pages = [{"endpoints": [{"url": "http://localhost/app/login", "method": "GET", "parameters": ["next"]}]}]
+    findings = check_open_redirect(tools, pages)
+    tools.client.close()
+    assert [f.category for f in findings] == ["Open Redirect"]
+    assert PAYLOAD_HOST in findings[0].evidence
+
+
+def test_open_redirect_quiet_when_internal_only():
+    from app.open_redirect import check_open_redirect
+    # Ung dung an toan: bo qua dau vao, chi chuyen huong noi bo.
+    def handler(r):
+        return httpx.Response(302, headers={"location": "/dashboard"})
+    tools = _mock_tools("http://localhost/app", handler)
+    pages = [{"endpoints": [{"url": "http://localhost/app/login", "method": "GET", "parameters": ["next"]}]}]
+    findings = check_open_redirect(tools, pages)
+    tools.client.close()
+    assert findings == []
+
+
+def test_csrf_flags_post_form_without_token():
+    from app.csrf import check_csrf
+    pages = [{"forms": [{"action": "http://localhost/app/profile", "method": "POST",
+                         "inputs": [{"name": "email", "type": "text"}]}]}]
+    findings = check_csrf(None, pages)
+    assert [f.category for f in findings] == ["Potential CSRF"]
+    assert findings[0].severity == "low"
+
+
+def test_csrf_quiet_when_token_present_or_get():
+    from app.csrf import check_csrf
+    pages = [
+        {"forms": [{"action": "http://localhost/app/a", "method": "POST",
+                    "inputs": [{"name": "csrf_token", "type": "hidden"}, {"name": "email"}]}]},
+        {"forms": [{"action": "http://localhost/app/b", "method": "GET", "inputs": [{"name": "q"}]}]},
+    ]
+    assert check_csrf(None, pages) == []
+
+
+def test_path_traversal_flags_passwd_disclosure():
+    from app.path_traversal import check_path_traversal
+    def handler(r):
+        f = r.url.params.get("file", "")
+        if ".." in f or "etc/passwd" in f or "%2f" in f.lower():
+            return httpx.Response(200, text="root:x:0:0:root:/root:/bin/bash")
+        return httpx.Response(200, text="normal content")
+    tools = _mock_tools("http://localhost/app", handler)
+    pages = [{"endpoints": [{"url": "http://localhost/app/view", "method": "GET", "parameters": ["file"]}]}]
+    findings = check_path_traversal(tools, pages)
+    tools.client.close()
+    assert [f.category for f in findings] == ["Path Traversal"]
+
+
+def test_path_traversal_quiet_when_no_disclosure():
+    from app.path_traversal import check_path_traversal
+    def handler(r):
+        return httpx.Response(200, text="normal content only")
+    tools = _mock_tools("http://localhost/app", handler)
+    pages = [{"endpoints": [{"url": "http://localhost/app/view", "method": "GET", "parameters": ["file"]}]}]
+    findings = check_path_traversal(tools, pages)
+    tools.client.close()
+    assert findings == []
+
+
+def test_xxe_flags_external_entity_disclosure():
+    from app.xxe import check_xxe
+    def handler(r):
+        body = r.content.decode(errors="ignore")
+        if "SYSTEM" in body and "etc/passwd" in body:
+            return httpx.Response(200, text="parsed: root:x:0:0:root:/root:/bin/bash")
+        return httpx.Response(200, text="ok benign")
+    tools = _mock_tools("http://localhost/app", handler)
+    pages = [{"endpoints": [{"url": "http://localhost/app/xml", "method": "POST", "accepts_xml": True}]}]
+    findings = check_xxe(tools, pages)
+    tools.client.close()
+    assert [f.category for f in findings] == ["XXE"]
+
+
+def test_xxe_quiet_when_entity_not_processed():
+    from app.xxe import check_xxe
+    def handler(r):
+        return httpx.Response(200, text="ok benign; no entity expansion")
+    tools = _mock_tools("http://localhost/app", handler)
+    pages = [{"endpoints": [{"url": "http://localhost/app/xml", "method": "POST", "accepts_xml": True}]}]
+    findings = check_xxe(tools, pages)
+    tools.client.close()
+    assert findings == []
+
+
 def test_access_control_quiet_when_admin_denied_or_html():
     import httpx
     from app.access_control import check_access_control

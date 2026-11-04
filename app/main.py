@@ -253,6 +253,7 @@ def create_scan(request: ScanRequest) -> ScanResult:
     extended = evaluate_extended(target, pages, findings)
     if extended.get("ground_truth_available"):
         evaluation = {**evaluation, "extended": extended}
-    result = ScanResult(scan_id=scan_id, target_url=target, pages=pages, findings=findings, agent_summary=agent.summary, used_deepseek=agent.used_deepseek, duration_ms=duration_ms, evaluation=evaluation, agent_trace=agent.trace, llm_usage=agent.llm_usage, llm_calls=agent.llm_calls, llm_latency_ms=agent.llm_latency_ms, llm_cost_usd=agent.llm_cost_usd, test_timings_ms=agent.test_timings_ms)
+    request_log = list(getattr(agent.recon.tools, "request_log", [])) if agent else []
+    result = ScanResult(scan_id=scan_id, target_url=target, pages=pages, findings=findings, agent_summary=agent.summary, used_deepseek=agent.used_deepseek, duration_ms=duration_ms, evaluation=evaluation, agent_trace=agent.trace, llm_usage=agent.llm_usage, llm_calls=agent.llm_calls, llm_latency_ms=agent.llm_latency_ms, llm_cost_usd=agent.llm_cost_usd, test_timings_ms=agent.test_timings_ms, request_log=request_log)
     scan_repository.save(result)
     return result

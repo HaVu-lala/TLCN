@@ -51,6 +51,7 @@ class ScanResult(BaseModel):
     test_timings_ms: dict[str, float] = Field(default_factory=dict)
     evaluation: dict[str, Any]
     agent_trace: list[AgentTrace] = Field(default_factory=list)
+    request_log: list[dict[str, Any]] = Field(default_factory=list)
     llm_usage: dict[str, int] = Field(default_factory=dict)
     llm_calls: int = 0
     llm_latency_ms: float = 0.0

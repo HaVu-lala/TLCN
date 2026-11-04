@@ -97,7 +97,7 @@ class ToolBox:
                 existing.add(key)
         return [f.model_dump() for f in new]
 
-    # Tool 3: active injection family (SQLi/XSS/IDOR) with baseline, confirmed by the oracle.
+    # Tool 3 [Thực nghiệm 1,2,3]: họ tiêm nhiễm (SQLi, XSS, IDOR) - gửi payload + baseline, oracle kết luận.
     def probe_and_verify(self, url: str, parameter: str, payload: str, kind: str, method: str = "GET") -> dict:
         baseline = self.tools.request(url, method, params={parameter: "sentinel-baseline"} if method == "GET" else None,
                                       data={parameter: "sentinel-baseline"} if method != "GET" else None)
@@ -110,9 +110,8 @@ class ToolBox:
         return {"kind": kind, "url": public_url(injected["url"]), "parameter": parameter,
                 "confirmed": bool(confirmed), "findings": self._record(confirmed)}
 
-    # Tool 4: full battery of standing detectors, driven by the extensible registry
-    # in app.detectors, plus the pinned lab-scenario oracles. New detection
-    # capabilities are registered in app.detectors; they never require a new tool.
+    # Tool 4 [Thực nghiệm 3,4,5,6,7]: chạy toàn bộ registry detector (A01/A02/A03/A04/A07 + oracle lab).
+    # Bộ detector nằm trong app.detectors; thêm kịch bản mới chỉ là đăng ký thêm 1 hàm, không thêm tool.
     def run_security_checks(self, **_) -> dict:
         if not self.pages:
             self.pages = self.tools.crawl()
@@ -202,6 +201,20 @@ class ToolCallingAgent:
         return payload["choices"][0]["message"]
 
     def run(self) -> list[Finding]:
+        # ===================================================================
+        # BAN DO QUY TRINH (che do function-calling) - AI goi tool, Python chay
+        # -------------------------------------------------------------------
+        # Vong lap ReAct: AI phat chi thi goi tool theo SYSTEM_PROMPT (toolbox.py:143).
+        #   Tool 1 reconnaissance     -> toolbox.py:79   (thu thap be mat)
+        #   Tool 2 http_request       -> toolbox.py:85   (gui 1 request co kiem soat scope)
+        #   Tool 3 probe_and_verify   -> toolbox.py:101  [TN1 SQLi, TN2 XSS, TN3 IDOR]
+        #           gui baseline + payload roi goi oracle VerificationAgent.run (app/agent.py:159)
+        #   Tool 4 run_security_checks-> toolbox.py:115  [TN3,TN4,TN5,TN6,TN7]
+        #           run_all(ctx) (app/detectors.py:46) chay registry app/scenarios/tn2..tn7
+        #           + check_lab (app/labs.py:14) oracle lab
+        #   Tool 5 generate_report    -> toolbox.py:125  (tong hop, khong phat hien them)
+        # Ket luan lo hong luon do ORACLE/detector quyet dinh, khong do AI.
+        # ===================================================================
         messages: list[dict] = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps({"target": public_url(self.target_url),

@@ -120,6 +120,48 @@ def render_vietnamese_report(result) -> str:
         </div>""")
     details_html = "".join(details) or "<p>Không phát hiện lỗ hổng nào trong phạm vi kiểm thử.</p>"
 
+    # Quy trình quét: hiển thị từng bước từ agent_trace (không chỉ kết quả)
+    AGENT_VI = {
+        "SessionManager": "Quản lý phiên", "Recon": "Thu thập thông tin",
+        "ReconAgent": "Thu thập thông tin", "LongTermMemory": "Bộ nhớ dài hạn",
+        "Planning": "Lập kế hoạch", "PlanningAgent": "Lập kế hoạch",
+        "Attack": "Tấn công có kiểm soát", "AttackAgent": "Tấn công có kiểm soát",
+        "Verification": "Xác minh (oracle)", "VerificationAgent": "Xác minh (oracle)",
+        "ReActFeedback": "Phản hồi ReAct", "ExtendedDetectors": "Bộ dò thường trực",
+        "Reporting": "Báo cáo", "ReportingAgent": "Báo cáo",
+        "ToolCallingAgent": "Tác tử gọi công cụ (AI)", "Orchestrator": "Điều phối",
+    }
+    STATUS_VI = {"completed": "Hoàn thành", "skipped": "Bỏ qua", "fallback": "Dự phòng"}
+    STATUS_COLOR = {"completed": "#0b5", "skipped": "#8a9099", "fallback": "#e8863a"}
+    trace_rows = ""
+    for step_i, t in enumerate(result.agent_trace, 1):
+        name = AGENT_VI.get(t.agent, t.agent)
+        sv = STATUS_VI.get(t.status, t.status)
+        sc = STATUS_COLOR.get(t.status, "#8a9099")
+        trace_rows += (f"<tr><td style='text-align:center'>{step_i}</td>"
+                       f"<td>{escape(name)}</td>"
+                       f"<td><span class='badge' style='background:{sc}'>{sv}</span></td>"
+                       f"<td>{escape(t.detail)}</td></tr>")
+    trace_rows = trace_rows or "<tr><td colspan='4'>Không có dữ liệu quy trình.</td></tr>"
+
+    # Nhật ký yêu cầu kiểm thử theo dòng thời gian: bằng chứng những gì đã thực sự gửi đi
+    def _is_payload(a: str) -> bool:
+        a = a or ""
+        return ("'" in a) or ("<script" in a.lower()) or ("onerror" in a.lower()) or ("<img" in a.lower())
+    log_rows = ""
+    for e in getattr(result, "request_log", []):
+        args = e.get("args", "")
+        hl = _is_payload(args)
+        row_style = " style='background:#fff3cd'" if hl else ""
+        tag = " <span class='badge' style='background:#d9534f'>payload</span>" if hl else ""
+        log_rows += (f"<tr{row_style}><td style='text-align:center'>{e.get('seq','')}</td>"
+                     f"<td class='mono'>{escape(str(e.get('ts','')))}</td>"
+                     f"<td class='mono'>{escape(str(e.get('method','')))}</td>"
+                     f"<td class='mono'>{escape(str(e.get('url','')))}</td>"
+                     f"<td class='mono'>{escape(str(args))}{tag}</td>"
+                     f"<td style='text-align:center'>{e.get('status','')}</td></tr>")
+    log_rows = log_rows or "<tr><td colspan='6'>Không có yêu cầu kiểm thử chủ động nào được ghi nhận.</td></tr>"
+
     high, med = counts.get("high", 0), counts.get("medium", 0)
     verdict = ("hệ thống tồn tại lỗ hổng NGHIÊM TRỌNG cần xử lý ngay." if high else
                "hệ thống tồn tại lỗ hổng mức trung bình cần khắc phục." if med else
@@ -172,16 +214,34 @@ def render_vietnamese_report(result) -> str:
         <tbody>{stat_rows}</tbody>
       </table>
 
-      <h2>2. Bảng tổng hợp phát hiện</h2>
+      <h2>2. Quy trình quét</h2>
+      <p>Các bước hệ thống đã thực hiện trong lần quét này, theo kiến trúc đa tác tử và vòng lặp
+      suy luận – hành động (ReAct). Mỗi lỗ hổng chỉ được công nhận sau bước Xác minh bằng oracle tất định.</p>
+      <table>
+        <thead><tr><th style='width:48px'>Bước</th><th>Thành phần</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead>
+        <tbody>{trace_rows}</tbody>
+      </table>
+
+      <h2>3. Bảng tổng hợp phát hiện</h2>
       <table>
         <thead><tr><th>STT</th><th>Lỗ hổng</th><th>Mức độ</th><th>Phân loại OWASP 2025</th><th>Vị trí</th></tr></thead>
         <tbody>{summary_table}</tbody>
       </table>
 
-      <h2>3. Chi tiết từng lỗ hổng</h2>
+      <h2>4. Chi tiết từng lỗ hổng</h2>
       {details_html}
 
-      <h2>4. Phạm vi và phương pháp</h2>
+      <h2>5. Nhật ký yêu cầu kiểm thử (theo dòng thời gian)</h2>
+      <p>Toàn bộ yêu cầu chủ động mà hệ thống đã thực sự gửi tới mục tiêu, ghi theo thứ tự thời gian.
+      Các dòng được tô đậm là yêu cầu mang payload kiểm thử (ví dụ dấu nháy đơn <span class='mono'>'</span>
+      trong tấn công SQL Injection), kèm theo mã trạng thái máy chủ trả về. Đây là bằng chứng cho thấy
+      payload đã được gửi đi, không chỉ là kết luận.</p>
+      <table>
+        <thead><tr><th style='width:40px'>#</th><th>Thời gian</th><th>Phương thức</th><th>URL</th><th>Tham số gửi đi</th><th>Mã</th></tr></thead>
+        <tbody>{log_rows}</tbody>
+      </table>
+
+      <h2>6. Phạm vi và phương pháp</h2>
       <p>Báo cáo được tạo tự động bằng hệ thống AI Pentest Agent theo mô hình ReAct (suy luận – hành động),
       kiểm thử theo phương pháp hộp đen trên hệ thống <b>được cấp phép</b> trong môi trường phòng lab.
       Mỗi lỗ hổng chỉ được ghi nhận khi có bằng chứng xác thực từ phản hồi thực tế của máy chủ

@@ -109,19 +109,61 @@ def _a04(url: str, headers: dict[str, str]) -> list[Finding]:
     return findings
 
 
-def passive_findings(pages: list[dict], target_url: str | None = None) -> list[Finding]:
-    """Return deduplicated passive findings for the target root response."""
-    page = _target_page(pages, target_url)
-    if page is None:
-        return []
-    headers = _headers_lower(page.get("headers"))
-    body = page.get("body", "") or ""
-    if not headers and not body:
-        return []
-    url = page.get("url", target_url or "")
-    is_html = _is_html(headers, page)
-    findings = _a02(url, headers, body, is_html) + _a03(url, headers) + _a04(url, headers)
+def _dedup(findings: list[Finding]) -> list[Finding]:
     unique: dict[tuple, Finding] = {}
     for finding in findings:
         unique.setdefault((finding.category, finding.url, finding.parameter), finding)
     return list(unique.values())
+
+
+def _target_ctx(pages: list[dict], target_url: str | None):
+    """Chọn trang gốc mục tiêu và trả về (page, headers, body, url) hoặc None."""
+    page = _target_page(pages, target_url)
+    if page is None:
+        return None
+    headers = _headers_lower(page.get("headers"))
+    body = page.get("body", "") or ""
+    if not headers and not body:
+        return None
+    url = page.get("url", target_url or "")
+    return page, headers, body, url
+
+
+def a02_findings(pages: list[dict], target_url: str | None = None) -> list[Finding]:
+    """[Kịch bản 4] A02 Security Misconfiguration: thiếu security header, lộ stack trace."""
+    ctx = _target_ctx(pages, target_url)
+    if ctx is None:
+        return []
+    page, headers, body, url = ctx
+    return _dedup(_a02(url, headers, body, _is_html(headers, page)))
+
+
+def a03_findings(pages: list[dict], target_url: str | None = None) -> list[Finding]:
+    """[Kịch bản 5] A03 Software Supply Chain: lộ phiên bản thành phần qua header."""
+    ctx = _target_ctx(pages, target_url)
+    if ctx is None:
+        return []
+    _page, headers, _body, url = ctx
+    return _dedup(_a03(url, headers))
+
+
+def a04_findings(pages: list[dict], target_url: str | None = None) -> list[Finding]:
+    """[Kịch bản 6] A04 Cryptographic Failures: cookie thiếu cờ an toàn, thiếu HSTS."""
+    ctx = _target_ctx(pages, target_url)
+    if ctx is None:
+        return []
+    _page, headers, _body, url = ctx
+    return _dedup(_a04(url, headers))
+
+
+def passive_findings(pages: list[dict], target_url: str | None = None) -> list[Finding]:
+    """Return deduplicated passive findings for the target root response.
+
+    Giữ lại như API gộp (A02+A03+A04) cho kiểm thử; mỗi nhóm giờ là một hàm riêng
+    để ánh xạ đúng một kịch bản (TN4/TN5/TN6).
+    """
+    return _dedup(
+        a02_findings(pages, target_url)
+        + a03_findings(pages, target_url)
+        + a04_findings(pages, target_url)
+    )
