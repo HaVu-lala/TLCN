@@ -74,6 +74,7 @@ class ToolBox:
         self.pages: list[dict] = []
         self.findings: list[Finding] = []
         self.calls = 0
+        self.standing_checks_done = False
 
     # Tool 1
     def reconnaissance(self, **_) -> dict:
@@ -92,12 +93,60 @@ class ToolBox:
         self.findings = dedupe_findings(self.findings + new)
         return [f.model_dump() for f in new]
 
+    def _input_context(self, url: str, parameter: str, method: str | None = None) -> tuple[str | None, dict | None]:
+        """Find the reconnaissance context for (url, parameter) so a probe reproduces a real request.
+
+        A payload sent on a single field often hits required-field validation before the vulnerable
+        code path (e.g. a login form needs its password field, a JSON API needs its sibling keys).
+        Mirrors the deterministic AttackAgent: match a crawled form (fill its other inputs) or a JSON
+        endpoint (fill its other keys), else fall back to the bare single-parameter request.
+
+        Matching is slash-insensitive on the URL, but when several contexts share a URL+parameter
+        (e.g. a GET and a POST form on the same action) the requested method and an exact URL are
+        preferred, so the probe tests the surface the caller asked for rather than the first match.
+        """
+        target = (url or "").rstrip("/")
+        candidates: list[tuple[str, dict, str, str]] = []
+        for page in self.pages:
+            for form in page.get("forms", []):
+                if (form.get("action") or "").rstrip("/") == target and any(i.get("name") == parameter for i in form.get("inputs", [])):
+                    candidates.append(("form", form, form.get("method", "GET"), form.get("action") or ""))
+            for endpoint in page.get("endpoints", []):
+                if (endpoint.get("url") or "").rstrip("/") == target and parameter in (endpoint.get("json_fields") or []):
+                    candidates.append(("json", endpoint, endpoint.get("method", "POST"), endpoint.get("url") or ""))
+        if not candidates:
+            return None, None
+        candidates.sort(key=lambda c: ((method is None or c[2] == method), c[3] == url), reverse=True)
+        kind, ctx, _, _ = candidates[0]
+        return kind, ctx
+
+    def _probe_request(self, ctx_kind: str | None, ctx: dict | None, url: str, parameter: str, value: str, method: str) -> dict:
+        if ctx_kind == "form":
+            if ctx.get("source") == "browser":
+                return self.tools.browser_request(ctx, parameter, value)
+            # Fill the form's other inputs with a benign non-empty value so required-field
+            # validation does not short-circuit the vulnerable code path.
+            values = {i["name"]: (i.get("value") or "sentinel-fill") for i in ctx.get("inputs", []) if i.get("name")}
+            values[parameter] = value
+            form_method = ctx.get("method", method)
+            return self.tools.request(ctx["action"], form_method,
+                                      params=values if form_method == "GET" else None,
+                                      data=values if form_method != "GET" else None)
+        if ctx_kind == "json":
+            json_method = ctx.get("method", "POST")
+            body = {field: "sentinel-fill" for field in ctx.get("json_fields", [])}
+            body[parameter] = value
+            return self.tools.request(ctx["url"], json_method, json_body=body)
+        return self.tools.request(url, method, params={parameter: value} if method == "GET" else None,
+                                  data={parameter: value} if method != "GET" else None)
+
     # Tool 3 [Thực nghiệm 1,2,3]: họ tiêm nhiễm (SQLi, XSS, IDOR) - gửi payload + baseline, oracle kết luận.
     def probe_and_verify(self, url: str, parameter: str, payload: str, kind: str, method: str = "GET") -> dict:
-        baseline = self.tools.request(url, method, params={parameter: "sentinel-baseline"} if method == "GET" else None,
-                                      data={parameter: "sentinel-baseline"} if method != "GET" else None)
-        injected = self.tools.request(url, method, params={parameter: payload} if method == "GET" else None,
-                                      data={parameter: payload} if method != "GET" else None)
+        if not self.pages:
+            self.pages = self.tools.crawl()
+        ctx_kind, ctx = self._input_context(url, parameter, method)
+        baseline = self._probe_request(ctx_kind, ctx, url, parameter, "sentinel-baseline", method)
+        injected = self._probe_request(ctx_kind, ctx, url, parameter, payload, method)
         probe = AttackProbe(kind, injected["url"], parameter, injected["body"], injected["status"],
                             baseline["body"], content_type=injected.get("headers", {}).get("content-type", "text/html"),
                             payload=payload, baseline_status=baseline["status"])
@@ -114,6 +163,7 @@ class ToolBox:
         found = run_all(ctx)                                                         # registry: A01/A02/A03/A04/A07
         found += check_lab(self.tools, self.pages, list(ALLOWED_TESTS),              # lab SQLi/XSS/BOLA oracles
                            comparison_tools=self.comparison_tools)
+        self.standing_checks_done = True
         return {"findings": self._record(found)}
 
     # Tool 5
@@ -171,6 +221,7 @@ class ToolCallingAgent:
         self.llm_cost_usd: float | None = None
         self.steps = 0
         self.trace_detail = ""
+        self.auto_completed: list[str] = []
 
     def _chat(self, messages: list[dict]) -> dict:
         started = perf_counter()
@@ -237,9 +288,14 @@ class ToolCallingAgent:
                     reported = True
             if finished:
                 break
-        # Always finalize: if the model stopped or hit the step cap without reporting,
-        # still aggregate the deterministic lab oracles and standing OWASP 2025 detectors
-        # so function-calling results are at least as complete as the deterministic pipeline.
+        # Always finalize: if the model skipped the standing battery, stopped early, or hit the
+        # step cap, run run_security_checks ourselves so function-calling coverage of the standing
+        # detectors + lab oracles is at least as complete as the deterministic pipeline. A model
+        # that never calls it must not silently report "completed" with those checks missing.
+        auto_completed: list[str] = []
+        if not self.toolbox.standing_checks_done:
+            self.toolbox.run_security_checks()
+            auto_completed.append("run_security_checks")
         if not reported:
             self.toolbox.generate_report()
         if settings.deepseek_input_cost_per_million or settings.deepseek_output_cost_per_million:
@@ -247,4 +303,7 @@ class ToolCallingAgent:
                 self.llm_usage.get("prompt_tokens", 0) / 1_000_000 * settings.deepseek_input_cost_per_million
                 + self.llm_usage.get("completion_tokens", 0) / 1_000_000 * settings.deepseek_output_cost_per_million, 8)
         self.trace_detail = f"ReAct tool-calling completed in {self.steps} LLM step(s) and {self.toolbox.calls} tool call(s)."
+        if auto_completed:
+            self.trace_detail += f" Auto-ran skipped mandatory check(s): {', '.join(auto_completed)}."
+        self.auto_completed = auto_completed
         return self.toolbox.findings
