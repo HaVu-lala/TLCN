@@ -61,9 +61,9 @@ Khi thấy `Application startup complete` là xong → http://localhost:8000
 | **Bookstore** | 8081 | `http://localhost:8081/` | Không cần | — |
 
 Kết quả tham chiếu (quét thật):
-- Juice Shop: 8 lỗ hổng (không login) hoặc **10** (có login, thêm BOLA + CSRF).
+- Juice Shop: 9 lỗ hổng (không login) hoặc **11** (có login, thêm BOLA + CSRF).
 - WebGoat: **10** lỗ hổng.
-- Bookstore: **20** lỗ hổng (phủ đủ 7 loại).
+- Bookstore: **11** điểm lỗ hổng duy nhất (phủ đủ 7 loại; các payload lặp trên cùng URL và tham số chỉ tính một lần).
 
 > Lưu ý: tài khoản tồn tại trên lab **đang chạy**. Nếu khởi động lại container (Juice/WebGoat) thì dữ liệu reset → phải đăng ký lại.
 > - Đăng ký Juice Shop: `POST http://localhost:3000/api/Users` (email, password, passwordRepeat, securityQuestion, securityAnswer).

@@ -1,10 +1,15 @@
+import importlib
+from types import SimpleNamespace
+
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app, safe_login_failures
+from app.schemas import Finding, dedupe_findings
 from app.passive import passive_findings
 from app.auth_checks import check_authentication, find_login_forms
-from app.evaluation import evaluate_extended
+from app.evaluation import _under_route, evaluate_extended, evaluate_lab
 from app.tools import WebTools
 
 
@@ -57,6 +62,31 @@ def test_auth_check_finds_default_credentials_on_demo():
     findings = check_authentication(tools, pages)
     tools.client.close()
     assert any(f.category == "Authentication Failures" and "Default credentials" in f.evidence for f in findings)
+
+
+LOGIN_PAGES = [{"forms": [{"action": "http://localhost/demo/login", "method": "POST",
+                           "inputs": [{"name": "username", "type": "text"}, {"name": "password", "type": "password"}]}]}]
+
+
+def _lockout_findings(statuses):
+    remaining = iter(statuses)
+    tools = _mock_tools("http://localhost/demo", lambda request: httpx.Response(next(remaining), text="x"))
+    findings = check_authentication(tools, LOGIN_PAGES)
+    tools.client.close()
+    return [f for f in findings if "lockout" in f.evidence]
+
+
+@pytest.mark.parametrize("status", [500, 503, 404, 405])
+def test_auth_lockout_not_claimed_when_login_never_processed(status):
+    assert _lockout_findings([status] * 8) == []
+
+
+def test_auth_lockout_not_claimed_when_one_attempt_is_a_server_error():
+    assert _lockout_findings([401] * 7 + [500]) == []
+
+
+def test_auth_lockout_still_reported_for_rejected_logins():
+    assert len(_lockout_findings([401] * 8)) == 1
 
 
 def test_auth_check_quiet_on_hardened_login():
@@ -291,3 +321,312 @@ def test_detector_registry_runs_registered_and_isolates_failures():
         for item in added:
             STANDING_DETECTORS.remove(item)
     assert "Demo Registry Check" in categories  # registered detector ran; boom did not abort it
+
+
+def test_open_redirect_accepts_explicit_port_in_location():
+    from app.open_redirect import check_open_redirect, PAYLOAD_HOST
+
+    def handler(request):
+        return httpx.Response(302, headers={"location": f"https://{PAYLOAD_HOST}:443/evil"})
+    pages = [{"endpoints": [{"url": "http://localhost/go", "parameters": ["next"]}]}]
+    tools = _mock_tools("http://localhost/", handler)
+    findings = check_open_redirect(tools, pages)
+    tools.client.close()
+    assert len(findings) == 1
+
+
+def test_open_redirect_rejects_payload_host_as_userinfo():
+    from app.open_redirect import check_open_redirect, PAYLOAD_HOST
+
+    def handler(request):
+        return httpx.Response(302, headers={"location": f"https://{PAYLOAD_HOST}@localhost/evil"})
+    pages = [{"endpoints": [{"url": "http://localhost/go", "parameters": ["next"]}]}]
+    tools = _mock_tools("http://localhost/", handler)
+    findings = check_open_redirect(tools, pages)
+    tools.client.close()
+    assert findings == []
+
+
+def test_open_redirect_probes_post_when_get_shares_the_url():
+    from app.open_redirect import check_open_redirect, PAYLOAD_HOST
+
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(302, headers={"location": f"https://{PAYLOAD_HOST}/evil"})
+        return httpx.Response(200, text="ok")
+    pages = [{"endpoints": [{"url": "http://localhost/go", "parameters": ["next"]}],
+              "forms": [{"action": "http://localhost/go", "method": "POST", "inputs": [{"name": "next"}]}]}]
+    tools = _mock_tools("http://localhost/", handler)
+    findings = check_open_redirect(tools, pages)
+    tools.client.close()
+    assert len(findings) == 1
+
+
+def test_path_traversal_probes_post_when_get_shares_the_url():
+    from app.path_traversal import check_path_traversal
+
+    def handler(request):
+        if request.method == "POST" and b"sentinel-benign" not in request.content:
+            return httpx.Response(200, text="root:x:0:0:root:/root:/bin/bash")
+        return httpx.Response(200, text="ok")
+    pages = [{"endpoints": [{"url": "http://localhost/f", "parameters": ["file"]}],
+              "forms": [{"action": "http://localhost/f", "method": "POST", "inputs": [{"name": "file"}]}]}]
+    tools = _mock_tools("http://localhost/", handler)
+    findings = check_path_traversal(tools, pages)
+    tools.client.close()
+    assert len(findings) == 1
+
+
+def _finding(url, category, parameter=None):
+    return SimpleNamespace(url=url, category=category, parameter=parameter)
+
+
+def _lab_outcomes(findings):
+    result = evaluate_lab("http://localhost:3000", [{"lab": "juice-shop"}], findings)
+    return result, {s["id"]: s["outcome"] for s in result["scenarios"]}
+
+
+def test_evaluate_lab_ignores_sibling_route_sharing_prefix():
+    finding = _finding("http://localhost:3000/ftp-unrelated", "Security Misconfiguration")
+    result, outcomes = _lab_outcomes([finding])
+    assert outcomes["juice-shop-a02-01"] == "FN"
+    assert result["unmatched_findings"] == 1
+
+
+def test_evaluate_lab_accepts_route_itself_and_children():
+    for url in ("http://localhost:3000/ftp", "http://localhost:3000/ftp/", "http://localhost:3000/ftp/legal.md"):
+        _, outcomes = _lab_outcomes([_finding(url, "Security Misconfiguration")])
+        assert outcomes["juice-shop-a02-01"] == "TP"
+
+
+def test_evaluate_lab_matches_spa_hash_route():
+    for url in ("http://localhost:3000/#/search", "http://localhost:3000/#/search?q=x"):
+        _, outcomes = _lab_outcomes([_finding(url, "DOM XSS", "q")])
+        assert outcomes["juice-shop-xss-01"] == "TP"
+    _, outcomes = _lab_outcomes([_finding("http://localhost:3000/#/searching", "DOM XSS", "q")])
+    assert outcomes["juice-shop-xss-01"] == "FN"
+
+
+def test_evaluate_extended_does_not_credit_sibling_fixture():
+    pages = [{"fixture_id": "sentinel-demo-v2", "status": 200}]
+    finding = _finding("http://testserver/demo-safe", "Security Misconfiguration")
+    result = evaluate_extended("http://testserver/demo", pages, [finding])
+    outcome = {s["category"]: s["outcome"] for s in result["scenarios"]}
+    assert outcome["Security Misconfiguration"] == "FN"
+    assert result["unmatched_findings"] == 1
+
+
+@pytest.mark.parametrize("module, param", [("app.open_redirect", "next"), ("app.path_traversal", "file")])
+def test_method_variants_do_not_push_other_urls_past_the_cap(module, param):
+    candidates = importlib.import_module(module)._candidates
+    pages = [{"endpoints": [{"url": f"http://localhost/p{i}", "parameters": [param]}],
+              "forms": [{"action": f"http://localhost/p{i}", "method": "POST", "inputs": [{"name": param}]}]}
+             for i in range(6)]
+    targets = candidates(pages)
+    assert len(targets) == 10
+    assert {url for url, _, _ in targets} == {f"http://localhost/p{i}" for i in range(6)}
+    assert targets[0] == ("http://localhost/p0", param, "GET")
+
+
+def test_open_redirect_reports_once_when_get_and_post_are_vulnerable():
+    from app.open_redirect import check_open_redirect, PAYLOAD_HOST
+
+    def handler(request):
+        return httpx.Response(302, headers={"location": f"https://{PAYLOAD_HOST}/evil"})
+    pages = [{"endpoints": [{"url": "http://localhost/go", "parameters": ["next"]}],
+              "forms": [{"action": "http://localhost/go", "method": "POST", "inputs": [{"name": "next"}]}]}]
+    tools = _mock_tools("http://localhost/", handler)
+    findings = check_open_redirect(tools, pages)
+    tools.client.close()
+    assert len(findings) == 1
+
+
+def test_under_route_handles_root():
+    assert all(_under_route(path, "/") for path in ("", "/", "/any/page"))
+
+
+@pytest.mark.parametrize("module, param", [("app.open_redirect", "next"), ("app.path_traversal", "file")])
+def test_late_method_variant_keeps_discovery_order_at_the_cap(module, param):
+    candidates = importlib.import_module(module)._candidates
+    pages = [{"endpoints": [{"url": f"http://localhost/p{i}", "parameters": [param]} for i in range(11)],
+              "forms": [{"action": "http://localhost/p0", "method": "POST", "inputs": [{"name": param}]}]}]
+    assert [url for url, _, _ in candidates(pages)] == [f"http://localhost/p{i}" for i in range(10)]
+
+
+def _lockout_findings_for(responses):
+    remaining = iter(responses)
+
+    def handler(request):
+        status, body = next(remaining)
+        return httpx.Response(status, text=body)
+    tools = _mock_tools("http://localhost/demo", handler)
+    findings = check_authentication(tools, LOGIN_PAGES)
+    tools.client.close()
+    return [f for f in findings if "lockout" in f.evidence]
+
+
+@pytest.mark.parametrize("status", [400, 403])
+@pytest.mark.parametrize("body", ["Invalid password", "Incorrect username or password",
+                                  "Mật khẩu không đúng", "Sai mật khẩu"])
+def test_auth_lockout_reported_when_400_403_rejects_credentials(status, body):
+    assert len(_lockout_findings_for([(status, body)] * 8)) == 1
+
+
+@pytest.mark.parametrize("status", [400, 403])
+@pytest.mark.parametrize("body", ["", "Forbidden", "403 Forbidden: invalid request", "Invalid CSRF token",
+                                  "Request blocked by WAF", "Please complete the captcha",
+                                  "Invalid password. CSRF token expired"])
+def test_auth_lockout_not_claimed_when_400_403_is_not_a_rejection(status, body):
+    assert _lockout_findings_for([(status, body)] * 8) == []
+
+
+def test_auth_lockout_not_claimed_when_one_attempt_is_ambiguous():
+    assert _lockout_findings_for([(401, "x")] * 7 + [(400, "Bad request")]) == []
+
+
+def test_auth_lockout_not_claimed_when_burst_turns_forbidden():
+    responses = [(401, "Invalid password")] * 6 + [(403, "Invalid password")] * 2
+    assert _lockout_findings_for(responses) == []
+
+
+def test_auth_lockout_not_claimed_when_forbidden_starts_after_default_credentials():
+    responses = [(401, "Invalid password")] * 4 + [(403, "Invalid password")] * 4
+    assert _lockout_findings_for(responses) == []
+
+
+@pytest.mark.parametrize("limited", [(403, "Invalid password"), (429, "x")])
+def test_auth_lockout_not_claimed_when_limiter_recovers_after_default_credentials(limited):
+    responses = [(401, "Invalid password")] + [limited] * 3 + [(401, "Invalid password")] * 4
+    assert _lockout_findings_for(responses) == []
+
+
+def test_auth_lockout_evidence_counts_only_failed_login_burst():
+    findings = _lockout_findings_for([(401, "Invalid password")] * 8)
+    assert "5 consecutive failed logins" in findings[0].evidence
+    assert "[401, 401, 401, 401, 401]" in findings[0].evidence
+
+
+@pytest.mark.parametrize("status", [200, 401])
+@pytest.mark.parametrize("body", ["Please complete the captcha", "Invalid CSRF token", "CSRF token missing",
+                                  '{"error": "CSRF verification failed"}', "<p>Invalid <b>CSRF</b> token</p>",
+                                  "<p>Vui lòng nhập captcha</p>"])
+def test_auth_lockout_not_claimed_when_challenge_blocks_login(status, body):
+    assert _lockout_findings_for([(status, body)] * 8) == []
+
+
+def test_auth_lockout_not_claimed_when_one_attempt_hits_a_challenge():
+    responses = [(200, "Invalid password")] * 7 + [(200, "Please complete the captcha")]
+    assert _lockout_findings_for(responses) == []
+
+
+HIDDEN_ONLY_PAGES = [
+    '<form><input type="hidden" name="csrf_token" value="abc"></form><p>Invalid password</p>',
+    '<form><input type="hidden" name="note" value="invalid csrf"></form><p>Invalid password</p>',
+    '<div class="g-recaptcha"></div><p>Invalid password</p>',
+    '<script>alert("complete the captcha")</script><p>Invalid password</p>',
+    '<noscript>Enable JavaScript to complete the captcha</noscript><p>Invalid password</p>',
+    '<!-- complete the captcha --><p>Invalid password</p>',
+]
+
+
+@pytest.mark.parametrize("status", [200, 400, 403])
+@pytest.mark.parametrize("body", HIDDEN_ONLY_PAGES)
+def test_auth_lockout_reported_when_challenge_is_only_in_markup(status, body):
+    assert len(_lockout_findings_for([(status, body)] * 8)) == 1
+
+
+def _default_credential_findings(trial_response):
+    def handler(request):
+        if _parse_body(request).get("username") == "admin":
+            return trial_response()
+        return httpx.Response(401, text="Invalid password")
+    tools = _mock_tools("http://localhost/demo", handler)
+    findings = check_authentication(tools, LOGIN_PAGES)
+    tools.client.close()
+    return [f for f in findings if "Default credentials" in f.evidence]
+
+
+def test_default_credentials_not_claimed_when_cookie_comes_with_challenge():
+    trial = lambda: httpx.Response(200, text="Please complete the captcha", headers={"set-cookie": "session=abc"})
+    assert _default_credential_findings(trial) == []
+
+
+def test_default_credentials_still_reported_when_login_sets_cookie():
+    trial = lambda: httpx.Response(200, text="<p>Hello</p>", headers={"set-cookie": "session=abc"})
+    assert len(_default_credential_findings(trial)) == 1
+
+
+def test_auth_lockout_reported_when_lock_word_is_only_in_script():
+    page = "<script>const accountLocked = false;</script><p>Invalid password</p>"
+    assert len(_lockout_findings_for([(401, page)] * 8)) == 1
+
+
+@pytest.mark.parametrize("body", ["<p>Account locked</p>", '{"status": "locked"}'])
+def test_auth_lockout_not_claimed_when_lock_message_is_visible(body):
+    assert _lockout_findings_for([(401, "Invalid password")] * 6 + [(401, body)] * 2) == []
+
+
+def test_auth_lockout_not_claimed_when_request_fails_validation():
+    body = '{"detail":[{"type":"missing","loc":["body","email"],"msg":"Field required"}]}'
+    assert _lockout_findings_for([(422, body)] * 8) == []
+
+
+def test_auth_lockout_reported_when_422_rejects_credentials():
+    assert len(_lockout_findings_for([(422, "Invalid password")] * 8)) == 1
+
+
+@pytest.mark.parametrize("category", ["SQL Injection", "Potential SQL Injection"])
+def test_evaluate_lab_accepts_either_sqli_oracle_on_juice_shop(category):
+    finding = _finding("http://localhost:3000/rest/products/search?q=%27", category, "q")
+    _, outcomes = _lab_outcomes([finding])
+    assert outcomes["juice-shop-sqli-01"] == "TP"
+
+
+def test_evaluate_lab_rejects_other_category_on_sqli_route():
+    finding = _finding("http://localhost:3000/rest/products/search", "Reflected XSS", "q")
+    _, outcomes = _lab_outcomes([finding])
+    assert outcomes["juice-shop-sqli-01"] == "FN"
+
+
+def _xss(url, parameter="q", severity="medium", category="Reflected XSS"):
+    return Finding(category=category, severity=severity, url=url, parameter=parameter, evidence="e", recommendation="r")
+
+
+def test_dedupe_collapses_per_probe_payload_urls():
+    findings = [_xss(f"http://localhost/search?q=marker{i}") for i in range(11)]
+    assert len(dedupe_findings(findings)) == 1
+
+
+def test_dedupe_prefers_highest_severity():
+    findings = [_xss("http://localhost/search?q=marker"), _xss("http://localhost/search", severity="high"),
+                _xss("http://localhost/search?q=other")]
+    assert [f.severity for f in dedupe_findings(findings)] == ["high"]
+
+
+def test_dedupe_keeps_distinct_vulnerable_points():
+    findings = [_xss("http://localhost/search?q=a"), _xss("http://localhost/ebook?file=a", "file"),
+                _xss("http://localhost/search?q=a", "name"), _xss("http://localhost/search?q=a", category="Stored XSS"),
+                _xss("http://localhost/search?page=2&q=a"), _xss("http://localhost/#/search", "q"),
+                _xss("http://localhost/#/other", "q")]
+    assert len(dedupe_findings(findings)) == 7
+
+
+def test_dedupe_keeps_objects_when_finding_has_no_parameter():
+    findings = [_xss("http://localhost/object?id=1", None), _xss("http://localhost/object?id=2", None)]
+    assert len(dedupe_findings(findings)) == 2
+
+
+def test_toolbox_keeps_highest_severity_across_records():
+    from app.toolbox import ToolBox
+    toolbox = ToolBox.__new__(ToolBox)
+    toolbox.findings = []
+    toolbox._record([_xss("http://localhost/search?q=a")])
+    toolbox._record([_xss("http://localhost/search?q=b", severity="high")])
+    assert [f["severity"] for f in toolbox.generate_report()["findings"]] == ["high"]
+
+
+def test_dedupe_tie_keeps_later_lab_pinned_evidence():
+    generic = Finding(category="Authentication Failures", severity="medium", url="http://localhost/login",
+                      parameter="password", evidence="generic", recommendation="r")
+    pinned = generic.model_copy(update={"evidence": "lab-pinned"})
+    assert [f.evidence for f in dedupe_findings([generic, pinned])] == ["lab-pinned"]

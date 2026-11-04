@@ -42,9 +42,9 @@ Mỗi kịch bản là một detector đăng ký vào registry (`app/scenarios/t
 
 | Môi trường | Cổng | Khởi động | Đăng nhập | Kết quả quét thật |
 | --- | ---: | --- | --- | --- |
-| **OWASP Juice Shop** | 3000 | Docker | Tùy chọn (login để có thêm BOLA) | 8 lỗ hổng (không login) / 10 (có login) |
+| **OWASP Juice Shop** | 3000 | Docker | Tùy chọn (login để có thêm BOLA) | 9 lỗ hổng (không login) / 11 (có login) |
 | **OWASP WebGoat** | 8082 | Docker | **Bắt buộc** | 10 lỗ hổng |
-| **Bookstore (tự xây)** | 8081 | webapp-runner + PostgreSQL | Không cần | 20 lỗ hổng (phủ đủ các kịch bản) |
+| **Bookstore (tự xây)** | 8081 | webapp-runner + PostgreSQL | Không cần | 11 điểm lỗ hổng duy nhất (phủ đủ các kịch bản) |
 
 - **Juice Shop / WebGoat**: dùng oracle ghim theo lab trong `app/labs.py`.
 - **Bookstore**: ứng dụng Java do nhóm tự phát triển (`JVA-bookstore`), được bổ sung một số điểm cuối minh hoạ (`/search`, `/ebook`, `/import`) và biểu mẫu đăng nhập có thể crawl, để hệ thống phát hiện đầy đủ kịch bản bằng **bộ detector tổng quát** (không ghim theo lab).

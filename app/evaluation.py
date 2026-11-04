@@ -13,6 +13,20 @@ EXTENDED_CATEGORIES = ("Security Misconfiguration", "Software Supply Chain Expos
                        "Cryptographic Failures", "Authentication Failures")
 
 
+def _under_route(path: str, route: str) -> bool:
+    """True when path is route itself or below it, never a sibling sharing its prefix."""
+    path, route = path.rstrip("/"), route.rstrip("/")
+    return path == route or path.startswith(route + "/")
+
+
+def _matches_route(url: str, route: str) -> bool:
+    parsed = urlparse(url)
+    if "#" not in route:
+        return _under_route(parsed.path, route)
+    # SPA routes such as /#/search live in the fragment, which parsed.path drops.
+    return _under_route(f"{parsed.path or '/'}#{parsed.fragment.split('?')[0]}", route)
+
+
 def metrics(tp: int, fp: int, fn: int, tn: int) -> dict:
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
@@ -76,10 +90,10 @@ def evaluate_lab(target: str, pages: list[dict], findings: list) -> dict:
     scenarios = []
     matched = set()
     for scenario in fixture["scenarios"]:
-        route = scenario["route"].split("{")[0].rstrip("/")
+        route = scenario["route"].split("{")[0]
         hits = [i for i, f in enumerate(findings)
-                if f.category == scenario["category"]
-                and urlparse(f.url).path.rstrip("/").startswith(route)
+                if f.category in scenario.get("accepted_categories", [scenario["category"]])
+                and _matches_route(f.url, route)
                 and f.parameter == scenario["parameter"]]
         matched.update(hits)
         scenarios.append({"id": scenario["id"], "category": scenario["category"],
@@ -119,7 +133,7 @@ def evaluate_extended(target: str, pages: list[dict], findings: list) -> dict:
     matched = set()
     for category in EXTENDED_CATEGORIES:
         hits = [i for i, f in enumerate(findings)
-                if f.category == category and (urlparse(f.url).path.rstrip("/") or "/").startswith(path)]
+                if f.category == category and _under_route(urlparse(f.url).path, path)]
         matched.update(hits)
         detected = bool(hits)
         scenarios.append({"category": category, "expected_positive": positive, "detected": detected,

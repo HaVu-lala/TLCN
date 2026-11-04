@@ -28,14 +28,14 @@ MAX_TARGETS = 10
 
 def _candidates(pages: list[dict]) -> list[tuple[str, str, str]]:
     targets: list[tuple[str, str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     for page in pages:
         for endpoint in page.get("endpoints", []):
             if endpoint.get("method", "GET").upper() != "GET":
                 continue
             for param in endpoint.get("parameters", []):
                 if (param or "").lower() in FILE_PARAM_NAMES:
-                    key = (endpoint.get("url", ""), param)
+                    key = (endpoint.get("url", ""), param, "GET")
                     if key not in seen:
                         seen.add(key)
                         targets.append((endpoint.get("url", ""), param, "GET"))
@@ -44,11 +44,16 @@ def _candidates(pages: list[dict]) -> list[tuple[str, str, str]]:
             for item in form.get("inputs", []):
                 name = item.get("name") or ""
                 if name.lower() in FILE_PARAM_NAMES:
-                    key = (form.get("action", ""), name)
+                    key = (form.get("action", ""), name, method)
                     if key not in seen:
                         seen.add(key)
                         targets.append((form.get("action", ""), name, method))
-    return targets[:MAX_TARGETS]
+    # Mỗi cặp (url, tham số) được ưu tiên một suất; method khác chỉ dùng phần hạn mức còn lại.
+    primary: dict[tuple[str, str], tuple[str, str, str]] = {}
+    for target in targets:
+        primary.setdefault(target[:2], target)
+    extras = [target for target in targets if target not in primary.values()]
+    return (list(primary.values()) + extras)[:MAX_TARGETS]
 
 
 def check_path_traversal(tools, pages: list[dict]) -> list[Finding]:

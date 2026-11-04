@@ -1,4 +1,5 @@
 from typing import Any, Literal
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -24,6 +25,27 @@ class Finding(BaseModel):
     parameter: str | None = None
     evidence: str
     recommendation: str
+
+
+SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3}
+
+
+def _vulnerability_url(finding: Finding) -> str:
+    """Finding URL without the tested parameter, whose value is a per-probe payload."""
+    parts = urlsplit(finding.url)
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != finding.parameter]
+    return parts._replace(query=urlencode(query)).geturl()
+
+
+def dedupe_findings(findings: list[Finding]) -> list[Finding]:
+    """Keep one finding per vulnerable point: highest severity, then the latest (lab-pinned) one."""
+    unique: dict[tuple, Finding] = {}
+    for finding in findings:
+        key = (finding.category, _vulnerability_url(finding), finding.parameter)
+        kept = unique.get(key)
+        if kept is None or SEVERITY_RANK[finding.severity] >= SEVERITY_RANK[kept.severity]:
+            unique[key] = finding
+    return list(unique.values())
 
 
 class AgentTrace(BaseModel):

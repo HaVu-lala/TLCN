@@ -6,7 +6,7 @@ from time import perf_counter
 import httpx
 from bs4 import BeautifulSoup
 
-from app.schemas import AgentTrace, Finding, LoginRequest
+from app.schemas import AgentTrace, Finding, LoginRequest, dedupe_findings
 from app.tools import WebTools
 from app.labs import check_lab
 from app.memory import LongTermMemory
@@ -333,8 +333,9 @@ class PentestAgent:
         findings.extend(standing)
         self.test_timings_ms["owasp_extended"] = round((perf_counter() - extended_started) * 1000, 2)
         self.trace.append(AgentTrace(agent="ExtendedDetectors", status="completed" if standing else "skipped", detail=f"Standing OWASP detector registry produced {len(standing)} candidate(s)."))
-        findings = list({(item.category, item.url, item.parameter): item for item in findings}.values())
+        raw_count = len(findings)
+        findings = dedupe_findings(findings)
         self.summary = self.reporter.run(len(pages), plan, findings)
-        self.trace.append(AgentTrace(agent=self.reporter.name, status="completed", detail="Generated structured findings and remediation advice."))
+        self.trace.append(AgentTrace(agent=self.reporter.name, status="completed", detail=f"Generated structured findings and remediation advice: {raw_count} raw candidate(s), {len(findings)} unique vulnerable point(s)."))
         self.memory.remember(self.target_url, findings, pages)
         return str(uuid.uuid4()), pages, findings

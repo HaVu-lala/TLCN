@@ -27,7 +27,7 @@ from app.config import settings
 from app.detectors import DetectorContext, run_all
 from app.labs import check_lab
 from app.reasoning import ALLOWED_TESTS, page_context, public_url
-from app.schemas import Finding
+from app.schemas import Finding, dedupe_findings
 from app.tools import WebTools
 
 MAX_STEPS = 20
@@ -89,12 +89,7 @@ class ToolBox:
                 "body": response["body"][:MAX_BODY_CHARS]}
 
     def _record(self, new: list[Finding]) -> list[dict]:
-        existing = {(f.category, f.url, f.parameter) for f in self.findings}
-        for finding in new:
-            key = (finding.category, finding.url, finding.parameter)
-            if key not in existing:
-                self.findings.append(finding)
-                existing.add(key)
+        self.findings = dedupe_findings(self.findings + new)
         return [f.model_dump() for f in new]
 
     # Tool 3 [Thực nghiệm 1,2,3]: họ tiêm nhiễm (SQLi, XSS, IDOR) - gửi payload + baseline, oracle kết luận.
@@ -125,7 +120,7 @@ class ToolBox:
     def generate_report(self, summary: str = "") -> dict:
         # Purely tool-driven: every finding was produced by a tool the model chose
         # to call. This step only deduplicates and returns; it performs no detection.
-        self.findings = list({(f.category, f.url, f.parameter): f for f in self.findings}.values())
+        self.findings = dedupe_findings(self.findings)
         return {"summary": summary or f"Reported {len(self.findings)} finding(s).",
                 "findings": [f.model_dump() for f in self.findings]}
 

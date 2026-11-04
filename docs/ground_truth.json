@@ -66,6 +66,7 @@
         {
           "id": "juice-shop-sqli-01",
           "category": "Potential SQL Injection",
+          "accepted_categories": ["Potential SQL Injection", "SQL Injection"],
           "oracle": "error-signature-or-boolean-product-count",
           "route": "/rest/products/search",
           "parameter": "q",
