@@ -7,7 +7,31 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.schemas import AgentTrace, Finding, LoginRequest, dedupe_findings
+from app.scope import ScopeError
 from app.tools import WebTools
+
+
+def _is_active_markup(tag) -> bool:
+    """A reflected tag is XSS evidence only if it can execute script.
+
+    A benign tag echoed verbatim (e.g. ``<img src="/logo.png">``) proves HTML
+    reflection but not script execution, so the oracle must require a script tag,
+    an inline event handler (on*), or a javascript: URL before confirming XSS.
+    """
+    if tag is None:
+        return False
+    if tag.name == "script":
+        # A script only executes with no type or an executable JS type; a data block
+        # (e.g. type="application/json" or "text/template") does not run.
+        script_type = (tag.get("type") or "").strip().lower()
+        return script_type in ("", "text/javascript", "application/javascript", "module", "text/ecmascript", "application/ecmascript")
+    if any((name or "").lower().startswith("on") for name in tag.attrs):
+        return True
+    for attr in ("src", "href"):
+        value = tag.get(attr) or ""
+        if isinstance(value, str) and value.strip().lower().startswith("javascript:"):
+            return True
+    return False
 from app.labs import check_lab
 from app.memory import LongTermMemory
 from app.detectors import DetectorContext, run_all
@@ -69,50 +93,60 @@ class AttackAgent:
         probes: list[AttackProbe] = []
         for page in pages:
             for form in page.get("forms", []):
-                method = form.get("method", "GET")
-                for field in form.get("inputs", []):
-                    name = field["name"]
-                    if "reflected_xss" in plan and not form["action"].endswith("/notes"):
-                        marker = f"<script>alert('sentinel-{uuid.uuid4().hex}')</script>"
-                        result = self._request(form, name, marker, method)
-                        probes.append(AttackProbe("reflected_xss", result["url"], name, result["body"], result["status"], content_type=result.get("headers", {}).get("content-type", ""), payload=marker))
-                    if "stored_xss" in plan and form["action"].endswith("/notes"):
-                        marker = f"<script>alert('sentinel-{uuid.uuid4().hex}')</script>"
-                        self._request(form, name, marker, method)
-                        result = self.tools.request(form["action"])
-                        probes.append(AttackProbe("stored_xss", result["url"], name, result["body"], result["status"], content_type=result.get("headers", {}).get("content-type", ""), payload=marker))
-                    if "basic_sqli" in plan and form.get("source") != "juice-shop-api-adapter":
-                        baseline = self._request(form, name, "sentinel-baseline", method)
-                        result = self._request(form, name, "'", method)
-                        probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"], baseline["body"], baseline_status=baseline["status"]))
+                # A single out-of-scope form action (ScopeError) must not abort the whole scan.
+                try:
+                    method = form.get("method", "GET")
+                    for field in form.get("inputs", []):
+                        name = field["name"]
+                        if "reflected_xss" in plan and not form["action"].endswith("/notes"):
+                            marker = f"<script>alert('sentinel-{uuid.uuid4().hex}')</script>"
+                            result = self._request(form, name, marker, method)
+                            probes.append(AttackProbe("reflected_xss", result["url"], name, result["body"], result["status"], content_type=result.get("headers", {}).get("content-type", ""), payload=marker))
+                        if "stored_xss" in plan and form["action"].endswith("/notes"):
+                            marker = f"<script>alert('sentinel-{uuid.uuid4().hex}')</script>"
+                            self._request(form, name, marker, method)
+                            result = self.tools.request(form["action"])
+                            probes.append(AttackProbe("stored_xss", result["url"], name, result["body"], result["status"], content_type=result.get("headers", {}).get("content-type", ""), payload=marker))
+                        if "basic_sqli" in plan and form.get("source") != "juice-shop-api-adapter":
+                            baseline = self._request(form, name, "sentinel-baseline", method)
+                            result = self._request(form, name, "'", method)
+                            probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"], baseline["body"], baseline_status=baseline["status"]))
+                except ScopeError:
+                    continue
             for endpoint in page.get("endpoints", []):
-                if endpoint["url"].rstrip("/").endswith("/rest/admin/application-configuration"):
-                    result = self.tools.request(endpoint["url"])
-                    probes.append(AttackProbe("sensitive_config", result["url"], "response", result["body"], result["status"]))
-                for name in endpoint.get("parameters", []):
-                    if "reflected_xss" in plan:
-                        marker = f"<script>alert('sentinel-{uuid.uuid4().hex}')</script>"
-                        result = self._request_endpoint(endpoint, name, marker)
-                        probes.append(AttackProbe("reflected_xss", result["url"], name, result["body"], result["status"], content_type=result.get("headers", {}).get("content-type", ""), payload=marker))
-                    if "basic_sqli" in plan:
-                        baseline = self._request_endpoint(endpoint, name, "sentinel-baseline")
-                        result = self._request_endpoint(endpoint, name, "'")
-                        probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"], baseline["body"], baseline_status=baseline["status"]))
-                # Inject into JSON body fields (e.g. an API that takes a JSON payload),
-                # filling the other fields so required-field validation does not block the path.
-                if "basic_sqli" in plan and endpoint.get("json_fields"):
-                    method = endpoint.get("method", "POST")
-                    base = {field: "sentinel-fill" for field in endpoint["json_fields"]}
-                    for name in endpoint["json_fields"]:
-                        baseline = self.tools.request(endpoint["url"], method, json_body={**base, name: "sentinel-baseline"})
-                        result = self.tools.request(endpoint["url"], method, json_body={**base, name: "'"})
-                        probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"], baseline["body"], baseline_status=baseline["status"]))
+                try:
+                    if endpoint["url"].rstrip("/").endswith("/rest/admin/application-configuration"):
+                        result = self.tools.request(endpoint["url"])
+                        probes.append(AttackProbe("sensitive_config", result["url"], "response", result["body"], result["status"]))
+                    for name in endpoint.get("parameters", []):
+                        if "reflected_xss" in plan:
+                            marker = f"<script>alert('sentinel-{uuid.uuid4().hex}')</script>"
+                            result = self._request_endpoint(endpoint, name, marker)
+                            probes.append(AttackProbe("reflected_xss", result["url"], name, result["body"], result["status"], content_type=result.get("headers", {}).get("content-type", ""), payload=marker))
+                        if "basic_sqli" in plan:
+                            baseline = self._request_endpoint(endpoint, name, "sentinel-baseline")
+                            result = self._request_endpoint(endpoint, name, "'")
+                            probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"], baseline["body"], baseline_status=baseline["status"]))
+                    # Inject into JSON body fields (e.g. an API that takes a JSON payload),
+                    # filling the other fields so required-field validation does not block the path.
+                    if "basic_sqli" in plan and endpoint.get("json_fields"):
+                        method = endpoint.get("method", "POST")
+                        base = {field: "sentinel-fill" for field in endpoint["json_fields"]}
+                        for name in endpoint["json_fields"]:
+                            baseline = self.tools.request(endpoint["url"], method, json_body={**base, name: "sentinel-baseline"})
+                            result = self.tools.request(endpoint["url"], method, json_body={**base, name: "'"})
+                            probes.append(AttackProbe("basic_sqli", result["url"], name, result["body"], result["status"], baseline["body"], baseline_status=baseline["status"]))
+                except ScopeError:
+                    continue
         if "idor" in plan and self.tools.target_url.rstrip("/").endswith(("/demo", "/demo-safe")):
-            object_url = f"{self.tools.target_url}/object"
-            if self.comparison_tools and self.tools.client.headers.get("X-Lab-User") == "user-1" and self.comparison_tools.client.headers.get("X-Lab-User") == "user-2":
-                owner_session = self.tools.request(object_url, params={"id": "1"})
-                other_session = self.comparison_tools.request(object_url, params={"id": "1"})
-                probes.append(AttackProbe("idor", other_session["url"], "id", other_session["body"], other_session["status"], owner_session["body"], baseline_status=owner_session["status"]))
+            try:
+                object_url = f"{self.tools.target_url}/object"
+                if self.comparison_tools and self.tools.client.headers.get("X-Lab-User") == "user-1" and self.comparison_tools.client.headers.get("X-Lab-User") == "user-2":
+                    owner_session = self.tools.request(object_url, params={"id": "1"})
+                    other_session = self.comparison_tools.request(object_url, params={"id": "1"})
+                    probes.append(AttackProbe("idor", other_session["url"], "id", other_session["body"], other_session["status"], owner_session["body"], baseline_status=owner_session["status"]))
+            except ScopeError:
+                pass
         return probes
 
     def _request(self, form: dict, field: str, payload: str, method: str) -> dict:
@@ -134,22 +168,25 @@ class AttackAgent:
         probes: list[AttackProbe] = []
         for page in pages:
             for form in page.get("forms", []):
-                method = form.get("method", "GET")
-                for field in form.get("inputs", []):
-                    name = field["name"]
-                    payloads = []
-                    if "reflected_xss" in plan and "Reflected XSS" not in confirmed and not form["action"].endswith("/notes"):
-                        payloads.append(("reflected_xss", f"<img src=x onerror=alert('sentinel-{uuid.uuid4().hex}')>"))
-                    if "stored_xss" in plan and "Stored XSS" not in confirmed and form["action"].endswith("/notes"):
-                        payloads.append(("stored_xss", f"<img src=x onerror=alert('sentinel-{uuid.uuid4().hex}')>"))
-                    if "basic_sqli" in plan and "Potential SQL Injection" not in confirmed and form.get("source") != "juice-shop-api-adapter":
-                        payloads.append(("basic_sqli", "' OR '1'='1"))
-                    for kind, payload in payloads:
-                        baseline = self._request(form, name, "sentinel-baseline", method) if kind == "basic_sqli" else None
-                        result = self._request(form, name, payload, method)
-                        if kind == "stored_xss":
-                            result = self.tools.request(form["action"])
-                        probes.append(AttackProbe(kind, result["url"], name, result["body"], result["status"], baseline["body"] if baseline else None, result.get("headers", {}).get("content-type", ""), payload=payload, baseline_status=baseline["status"] if baseline else None))
+                try:
+                    method = form.get("method", "GET")
+                    for field in form.get("inputs", []):
+                        name = field["name"]
+                        payloads = []
+                        if "reflected_xss" in plan and "Reflected XSS" not in confirmed and not form["action"].endswith("/notes"):
+                            payloads.append(("reflected_xss", f"<img src=x onerror=alert('sentinel-{uuid.uuid4().hex}')>"))
+                        if "stored_xss" in plan and "Stored XSS" not in confirmed and form["action"].endswith("/notes"):
+                            payloads.append(("stored_xss", f"<img src=x onerror=alert('sentinel-{uuid.uuid4().hex}')>"))
+                        if "basic_sqli" in plan and "Potential SQL Injection" not in confirmed and form.get("source") != "juice-shop-api-adapter":
+                            payloads.append(("basic_sqli", "' OR '1'='1"))
+                        for kind, payload in payloads:
+                            baseline = self._request(form, name, "sentinel-baseline", method) if kind == "basic_sqli" else None
+                            result = self._request(form, name, payload, method)
+                            if kind == "stored_xss":
+                                result = self.tools.request(form["action"])
+                            probes.append(AttackProbe(kind, result["url"], name, result["body"], result["status"], baseline["body"] if baseline else None, result.get("headers", {}).get("content-type", ""), payload=payload, baseline_status=baseline["status"] if baseline else None))
+                except ScopeError:
+                    continue
         return probes
 
 
@@ -166,7 +203,7 @@ class VerificationAgent:
         for probe in probes:
             soup = BeautifulSoup(probe.body, "html.parser") if "html" in probe.content_type and "<" in probe.body else None
             expected = BeautifulSoup(probe.payload or "<script>alert(1)</script>", "html.parser").find(["script", "img"])
-            marker_present = bool(soup and expected and any(tag == expected and not tag.find_parent(["textarea", "title", "style", "template", "noscript"]) for tag in soup.find_all(expected.name)))
+            marker_present = bool(soup and expected and _is_active_markup(expected) and any(tag == expected and not tag.find_parent(["textarea", "title", "style", "template", "noscript"]) for tag in soup.find_all(expected.name)))
             # [Thực nghiệm 2 - Reflected XSS] Chỉ công nhận khi marker phản chiếu trong ngữ cảnh HTML hoạt động và phản hồi thành công.
             if probe.kind == "reflected_xss" and "html" in probe.content_type and marker_present and 200 <= probe.status < 300:
                 findings.append(Finding(category="Reflected XSS", severity="medium", url=probe.url, parameter=probe.parameter, evidence="The unique controlled marker was reflected as an HTML script or event handler. Static HTML evidence; browser execution was not verified.", recommendation="Encode output by context and apply a restrictive Content-Security-Policy."))

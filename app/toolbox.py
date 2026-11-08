@@ -120,38 +120,56 @@ class ToolBox:
         kind, ctx, _, _ = candidates[0]
         return kind, ctx
 
-    def _probe_request(self, ctx_kind: str | None, ctx: dict | None, url: str, parameter: str, value: str, method: str) -> dict:
+    def _probe_request(self, ctx_kind: str | None, ctx: dict | None, url: str, parameter: str, value: str, method: str, tools: WebTools | None = None) -> dict:
+        tools = tools or self.tools
         if ctx_kind == "form":
             if ctx.get("source") == "browser":
-                return self.tools.browser_request(ctx, parameter, value)
+                return tools.browser_request(ctx, parameter, value)
             # Fill the form's other inputs with a benign non-empty value so required-field
             # validation does not short-circuit the vulnerable code path.
             values = {i["name"]: (i.get("value") or "sentinel-fill") for i in ctx.get("inputs", []) if i.get("name")}
             values[parameter] = value
             form_method = ctx.get("method", method)
-            return self.tools.request(ctx["action"], form_method,
-                                      params=values if form_method == "GET" else None,
-                                      data=values if form_method != "GET" else None)
+            return tools.request(ctx["action"], form_method,
+                                 params=values if form_method == "GET" else None,
+                                 data=values if form_method != "GET" else None)
         if ctx_kind == "json":
             json_method = ctx.get("method", "POST")
             body = {field: "sentinel-fill" for field in ctx.get("json_fields", [])}
             body[parameter] = value
-            return self.tools.request(ctx["url"], json_method, json_body=body)
-        return self.tools.request(url, method, params={parameter: value} if method == "GET" else None,
-                                  data={parameter: value} if method != "GET" else None)
+            return tools.request(ctx["url"], json_method, json_body=body)
+        return tools.request(url, method, params={parameter: value} if method == "GET" else None,
+                             data={parameter: value} if method != "GET" else None)
 
     # Tool 3 [Thực nghiệm 1,2,3]: họ tiêm nhiễm (SQLi, XSS, IDOR) - gửi payload + baseline, oracle kết luận.
     def probe_and_verify(self, url: str, parameter: str, payload: str, kind: str, method: str = "GET") -> dict:
         if not self.pages:
             self.pages = self.tools.crawl()
         ctx_kind, ctx = self._input_context(url, parameter, method)
-        baseline = self._probe_request(ctx_kind, ctx, url, parameter, "sentinel-baseline", method)
-        injected = self._probe_request(ctx_kind, ctx, url, parameter, payload, method)
-        probe = AttackProbe(kind, injected["url"], parameter, injected["body"], injected["status"],
+        if kind == "idor":
+            # BOLA/IDOR is proven by a SECOND identity reading the first session's object,
+            # not by a payload. Without a comparison session the tool cannot confirm it;
+            # with one, read the same object from both sessions (mirrors the deterministic agent).
+            if not self.comparison_tools:
+                return {"kind": kind, "url": public_url(url), "parameter": parameter, "confirmed": False,
+                        "findings": [], "note": "BOLA/IDOR requires a second (comparison) session; none was provided."}
+            baseline = self._probe_request(ctx_kind, ctx, url, parameter, payload, method)
+            injected = self._probe_request(ctx_kind, ctx, url, parameter, payload, method, tools=self.comparison_tools)
+        else:
+            baseline = self._probe_request(ctx_kind, ctx, url, parameter, "sentinel-baseline", method)
+            injected = self._probe_request(ctx_kind, ctx, url, parameter, payload, method)
+            if kind == "stored_xss":
+                # Independent re-read of the clean resource URL (no injected parameter) so the
+                # oracle sees whether the payload PERSISTED, not merely that it was echoed back
+                # in the injection response (else a purely reflected endpoint is mislabelled
+                # Stored XSS). Mirrors the deterministic agent, which re-GETs the form action.
+                reread_target = ctx["action"] if ctx_kind == "form" else (ctx["url"] if ctx_kind == "json" else url)
+                injected = self.tools.request(reread_target)
+        probe = AttackProbe(kind, injected["url"] or url, parameter, injected["body"], injected["status"],
                             baseline["body"], content_type=injected.get("headers", {}).get("content-type", "text/html"),
                             payload=payload, baseline_status=baseline["status"])
         confirmed = self.verifier.run([probe])
-        return {"kind": kind, "url": public_url(injected["url"]), "parameter": parameter,
+        return {"kind": kind, "url": public_url(injected["url"] or url), "parameter": parameter,
                 "confirmed": bool(confirmed), "findings": self._record(confirmed)}
 
     # Tool 4 [Thực nghiệm 3,4,5,6,7]: chạy toàn bộ registry detector (A01/A02/A03/A04/A07 + oracle lab).

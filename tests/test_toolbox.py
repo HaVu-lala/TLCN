@@ -156,6 +156,59 @@ def test_probe_and_verify_prefers_context_matching_requested_method():
     assert seen["method"] == "POST"
 
 
+def test_probe_and_verify_stored_xss_requires_independent_persistence():
+    # Reflect-only endpoint: echoes the submitted value but stores nothing. The independent
+    # re-read (clean URL) has no payload, so the Stored XSS oracle must stay silent.
+    def handler(request):
+        note = request.url.params.get("note", "")
+        return httpx.Response(200, text=f"<div>{note}</div>", headers={"content-type": "text/html"})
+    tools = WebTools("http://localhost/echo")
+    tools.client.close()
+    tools.client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    box = ToolBox(tools)
+    box.pages = [{"forms": [], "endpoints": []}]
+    payload = "<script>alert('sentinel-stored')</script>"
+    result = box.probe_and_verify("http://localhost/echo", "note", payload, "stored_xss", "GET")
+    tools.client.close()
+    assert not result["confirmed"]
+    assert result["findings"] == []
+
+
+def test_probe_and_verify_stored_xss_confirms_when_persisted():
+    store = {"v": ""}
+
+    def handler(request):
+        note = request.url.params.get("note")
+        if note is not None:
+            store["v"] = note
+        return httpx.Response(200, text=f"<div>{store['v']}</div>", headers={"content-type": "text/html"})
+    tools = WebTools("http://localhost/notes")
+    tools.client.close()
+    tools.client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    box = ToolBox(tools)
+    box.pages = [{"forms": [], "endpoints": []}]
+    payload = "<script>alert('sentinel-stored')</script>"
+    result = box.probe_and_verify("http://localhost/notes", "note", payload, "stored_xss", "GET")
+    tools.client.close()
+    assert result["confirmed"]
+    assert any(f["category"] == "Stored XSS" for f in result["findings"])
+
+
+def test_probe_and_verify_idor_without_comparison_session_is_inconclusive():
+    # BOLA/IDOR needs a second identity; with only one session the tool must not confirm.
+    def handler(request):
+        return httpx.Response(200, text="Owner: user-1 Secret project data", headers={"content-type": "text/html"})
+    tools = WebTools("http://localhost/demo")
+    tools.client.close()
+    tools.client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    box = ToolBox(tools)  # no comparison_tools
+    box.pages = [{"forms": [], "endpoints": []}]
+    result = box.probe_and_verify("http://localhost/demo/object", "id", "1", "idor", "GET")
+    tools.client.close()
+    assert not result["confirmed"]
+    assert result["findings"] == []
+
+
 def test_probe_and_verify_fills_companion_json_field():
     def handler(request):
         body = json.loads(request.content.decode())

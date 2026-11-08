@@ -93,6 +93,17 @@ class WebTools:
                     raise ValueError("WebGoat login failed; verify username and password.")
                 self.authentication_status = "authenticated"
                 return
+            # WordPress/WooCommerce: nonce-protected form login. Sniff the login
+            # page with a throwaway client so the main session's cookie jar stays
+            # untouched (a servlet GET here would pre-seed JSESSIONID and defeat the
+            # "new session cookie" success check used by the generic path below).
+            if self._is_woocommerce(login_url):
+                page = self.client.get(login_url)
+                page.raise_for_status()
+                if self._woocommerce_login(login_url, page.text, login):
+                    self.authentication_status = "authenticated"
+                    return
+                raise ValueError("WooCommerce login failed; verify username and password.")
             cookies_before = set(self.client.cookies.keys())
             # Modern JSON APIs (e.g. Juice Shop) expect {"email", "password"}.
             token = self._attempt_login(login_url, json={"email": login.username, "password": login.password})
@@ -110,6 +121,46 @@ class WebTools:
             self.client.headers["Authorization"] = f"Bearer {token}"
             self.session_token = token
         self.authentication_status = "authenticated"
+
+    def _is_woocommerce(self, login_url: str) -> bool:
+        """Detect a WooCommerce login form without touching the main cookie jar."""
+        try:
+            with httpx.Client(timeout=settings.request_timeout_seconds, follow_redirects=True,
+                              headers=dict(self.client.headers),
+                              event_hooks={"request": [self._guard_request]}) as probe:
+                return 'name="woocommerce-login-nonce"' in probe.get(login_url).text
+        except httpx.HTTPError:
+            return False
+
+    def _woocommerce_login(self, login_url: str, page_html: str, login: LoginRequest) -> bool:
+        """Authenticate against a WordPress/WooCommerce my-account login form.
+
+        WooCommerce rejects a bare {username, password} POST: it requires the
+        per-request `woocommerce-login-nonce`, the `login` submit field, and a
+        `wordpress_test_cookie` to prove cookies work. We parse the real login
+        form, carry over its hidden fields (nonce, _wp_http_referer), override the
+        credentials, and POST. Success is a `wordpress_logged_in_*` session cookie.
+        """
+        soup = BeautifulSoup(page_html, "html.parser")
+        form = soup.select_one("form.woocommerce-form-login") or soup.find("form")
+        if form is None:
+            return False
+        fields: dict[str, str] = {}
+        for inp in form.find_all(("input", "button")):
+            name = inp.get("name")
+            if name:
+                fields[name] = inp.get("value", "")
+        fields["username"] = login.username
+        fields["password"] = login.password
+        fields.setdefault("login", "Log in")
+        # WordPress checks this cookie before accepting a login.
+        self.client.cookies.set("wordpress_test_cookie", "WP Cookie check",
+                                domain=urlparse(login_url).hostname)
+        action = form.get("action") or login_url
+        post_url = urljoin(login_url, action)
+        response = self.client.post(post_url, data=fields)
+        response.raise_for_status()
+        return any(name.startswith("wordpress_logged_in") for name in self.client.cookies.keys())
 
     def _attempt_login(self, login_url: str, *, json: dict | None = None, data: dict | None = None) -> str | None:
         """Post credentials and return a session token if the server returns one.
@@ -319,6 +370,7 @@ class WebTools:
                 page.on("request", capture_request)
                 page.goto(pages[0]["url"], wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
                 page.wait_for_timeout(750)
+                self._trigger_lazy_loads(page)
                 dismiss = page.get_by_role("button", name="Close Welcome Banner")
                 if dismiss.count():
                     dismiss.first.click()
@@ -383,6 +435,7 @@ class WebTools:
                         dismiss = page.get_by_role("button", name="Close Welcome Banner")
                         if dismiss.count():
                             dismiss.first.click()
+                        self._trigger_lazy_loads(page)
                         child_links = page.locator("a[href]").evaluate_all(link_filter_js)
                     except Exception:
                         child_links = []
@@ -423,6 +476,36 @@ class WebTools:
                 browser.close()
         except Exception as exc:
             pages[0]["browser_error"] = str(exc)
+
+    def _trigger_lazy_loads(self, page) -> None:
+        """Nhấp/scroll nhẹ để SPA tải các API 'lười' (vd danh sách đánh giá chỉ gọi
+        khi mở tab) -> capture_request bắt được endpoint ẩn như /api/reviews. Mọi
+        thao tác đều bọc try/except và có giới hạn để không làm hỏng crawl."""
+        try:
+            page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(300)
+        except Exception:
+            pass
+        vocab = ("đánh giá", "bình luận", "nhận xét", "review", "comment", "rating")
+        try:
+            handles = page.query_selector_all("button, a, [role=tab], [role=button], li")
+        except Exception:
+            return
+        clicked = 0
+        for handle in handles:
+            if clicked >= 4:
+                break
+            try:
+                text = (handle.inner_text() or "").strip().lower()
+            except Exception:
+                continue
+            if text and any(word in text for word in vocab):
+                try:
+                    handle.click(timeout=1000)
+                    page.wait_for_timeout(500)
+                    clicked += 1
+                except Exception:
+                    continue
 
     def _credential_json_endpoints(self, url: str, html: str) -> list[dict]:
         """Discover a credential-change JSON API without submitting the form.
@@ -486,11 +569,13 @@ class WebTools:
                     search_icon.first.click()
                     page.wait_for_timeout(250)
             if not input_locator.is_visible() or not input_locator.is_enabled():
-                return {"url": page.url, "status": 0, "headers": {}, "body": ""}
+                return {"url": page.url, "status": 0, "headers": {"content-type": "text/html"}, "body": ""}
             input_locator.fill(payload)
             input_locator.press("Enter")
             page.wait_for_timeout(500)
-            result = {"url": page.url, "status": 200, "headers": {}, "body": page.content()[:12000]}
+            # page.content() is the rendered DOM (HTML); advertise the type so the
+            # deterministic XSS oracle, which requires an HTML context, can run on it.
+            result = {"url": page.url, "status": 200, "headers": {"content-type": "text/html"}, "body": page.content()[:12000]}
             context.close()
             browser.close()
             return result

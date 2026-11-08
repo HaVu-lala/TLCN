@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 8.0
     browser_scan_enabled: bool = True
     browser_timeout_ms: int = 15000
+    # Chế độ chủ động/xâm lấn (như "Active scan" của Burp/ZAP): cho phép GHI dữ liệu
+    # để bắt Stored XSS hộp đen. Mặc định TẮT để scan thường giữ tính không phá hoại.
+    aggressive_scan: bool = False
     deepseek_input_cost_per_million: float = 0.0
     deepseek_output_cost_per_million: float = 0.0
 

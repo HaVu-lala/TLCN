@@ -48,6 +48,19 @@ def test_different_objects_do_not_prove_bola():
     assert not VerificationAgent().run([AttackProbe("idor", "http://localhost/demo/object", "id", "Object B", 200, "Object A")])
 
 
+def test_benign_reflected_tag_without_handler_is_not_xss():
+    # An echoed <img> with no event handler proves HTML reflection, not script execution.
+    body = '<div><img src="/logo.png"></div>'
+    probe = AttackProbe("reflected_xss", "http://localhost/x", "q", body, 200, content_type="text/html", payload='<img src="/logo.png">')
+    assert VerificationAgent().run([probe]) == []
+
+
+def test_reflected_tag_with_event_handler_is_xss():
+    marker = "<img src=x onerror=alert('sentinel-active')>"
+    probe = AttackProbe("reflected_xss", "http://localhost/x", "q", f"<div>{marker}</div>", 200, content_type="text/html", payload=marker)
+    assert [f.category for f in VerificationAgent().run([probe])] == ["Reflected XSS"]
+
+
 def test_safe_fixture_encodes_and_authorizes():
     client = TestClient(app)
     marker = "<script>alert(1)</script>"
@@ -75,6 +88,25 @@ def test_negative_fixture_measures_fpr():
     assert result["true_negative"] == 4
     assert result["false_positive_rate"] == 0
     assert metrics(2, 1, 2, 3)["false_positive_rate"] == 0.25
+
+
+def test_attack_skips_out_of_scope_form_without_aborting():
+    # One out-of-scope form action raises ScopeError; it must be skipped, not abort the
+    # whole attack stage, so the in-scope form is still probed.
+    def handler(request):
+        return httpx.Response(200, text=f"<div>{request.url.params.get('q','')}</div>",
+                              headers={"content-type": "text/html"})
+    tools = WebTools("http://localhost:8000/demo")
+    tools.client.close()
+    tools.client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    pages = [{"forms": [
+        {"action": "http://outside.example/f", "method": "GET", "inputs": [{"name": "q"}]},
+        {"action": "http://localhost:8000/demo/search", "method": "GET", "inputs": [{"name": "q"}]},
+    ], "endpoints": []}]
+    probes = AttackAgent(tools).run(pages, ["reflected_xss"])
+    tools.client.close()
+    assert any(p.url.startswith("http://localhost:8000/demo/search") for p in probes)
+    assert not any("outside.example" in (p.url or "") for p in probes)
 
 
 def test_cross_origin_redirect_blocked_before_request():

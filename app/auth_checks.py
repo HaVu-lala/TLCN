@@ -115,6 +115,27 @@ def _login_was_processed(response: dict) -> bool:
 
 def check_authentication(tools, pages: list[dict]) -> list[Finding]:
     findings: list[Finding] = []
+    # A successful default-credential login sets a session cookie on the shared client;
+    # snapshot and restore the full cookie jar (preserving name, domain, path and flags)
+    # so later detectors keep the original scan identity instead of silently inheriting an
+    # admin session established by this check.
+    jar = getattr(getattr(tools, "client", None), "cookies", None)
+    saved_cookies = list(jar.jar) if jar is not None else None
+    try:
+        _run_auth_checks(tools, pages, findings)
+    finally:
+        if jar is not None and saved_cookies is not None:
+            jar.jar.clear()
+            for cookie in saved_cookies:
+                jar.jar.set_cookie(cookie)
+
+    unique: dict[tuple, Finding] = {}
+    for finding in findings:
+        unique.setdefault((finding.category, finding.url, finding.parameter), finding)
+    return list(unique.values())
+
+
+def _run_auth_checks(tools, pages: list[dict], findings: list[Finding]) -> None:
     for form in find_login_forms(pages)[:MAX_LOGIN_FORMS]:
         action = form["action"]
         method = form.get("method", "POST")
@@ -158,8 +179,3 @@ def check_authentication(tools, pages: list[dict]) -> list[Finding]:
                 evidence=f"{len(statuses)} consecutive failed logins did not trigger any lockout or rate limiting (observed statuses {statuses}).",
                 recommendation="Apply account lockout, exponential backoff or CAPTCHA after repeated authentication failures.",
             ))
-
-    unique: dict[tuple, Finding] = {}
-    for finding in findings:
-        unique.setdefault((finding.category, finding.url, finding.parameter), finding)
-    return list(unique.values())

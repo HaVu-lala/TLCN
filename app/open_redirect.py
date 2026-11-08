@@ -23,47 +23,56 @@ PAYLOAD = "https://sentinel-redirect.test/evil"
 MAX_TARGETS = 10
 
 
-def _candidates(pages: list[dict]) -> list[tuple[str, str, str]]:
-    """Thu các (url, tham_số, method) có tên giống đích chuyển hướng."""
-    targets: list[tuple[str, str, str]] = []
-    seen: set[tuple[str, str, str]] = set()
+def _companions(form: dict, exclude: str) -> dict:
+    """Các trường khác của form, điền giá trị lành tính để không bị chặn bởi kiểm tra trường bắt buộc."""
+    return {i["name"]: (i.get("value") or "sentinel-fill")
+            for i in form.get("inputs", []) if i.get("name") and i.get("name") != exclude}
+
+
+def _candidates(pages: list[dict]) -> list[tuple[str, str, str, dict]]:
+    """Thu các (url, tham_số, method, companions) có tên giống đích chuyển hướng."""
+    raw: list[tuple[str, str, str, dict]] = []
     for page in pages:
         for endpoint in page.get("endpoints", []):
             if endpoint.get("method", "GET").upper() != "GET":
                 continue
             for param in endpoint.get("parameters", []):
                 if (param or "").lower() in REDIRECT_PARAM_NAMES:
-                    key = (endpoint.get("url", ""), param, "GET")
-                    if key not in seen:
-                        seen.add(key)
-                        targets.append((endpoint.get("url", ""), param, "GET"))
+                    raw.append((endpoint.get("url", ""), param, "GET", {}))
         for form in page.get("forms", []):
             method = form.get("method", "GET").upper()
             for item in form.get("inputs", []):
                 name = item.get("name") or ""
                 if name.lower() in REDIRECT_PARAM_NAMES:
-                    key = (form.get("action", ""), name, method)
-                    if key not in seen:
-                        seen.add(key)
-                        targets.append((form.get("action", ""), name, method))
-    # Mỗi cặp (url, tham số) được ưu tiên một suất; method khác chỉ dùng phần hạn mức còn lại.
-    primary: dict[tuple[str, str], tuple[str, str, str]] = {}
+                    raw.append((form.get("action", ""), name, method, _companions(form, name)))
+    # Khử trùng theo (url, tham số, method); khi trùng, ưu tiên bản có companion fields
+    # (thường là form) để không bỏ sót trường bắt buộc.
+    by_triple: dict[tuple[str, str, str], tuple[str, str, str, dict]] = {}
+    for target in raw:
+        key = target[:3]
+        if key not in by_triple or (not by_triple[key][3] and target[3]):
+            by_triple[key] = target
+    targets = list(by_triple.values())
+    # Mỗi cặp (url, tham số) được ưu tiên một suất; method khác dùng phần hạn mức còn lại.
+    primary: dict[tuple[str, str], tuple[str, str, str, dict]] = {}
     for target in targets:
-        primary.setdefault(target[:2], target)
-    extras = [target for target in targets if target not in primary.values()]
+        key = target[:2]
+        if key not in primary or (not primary[key][3] and target[3]):
+            primary[key] = target
+    extras = [target for target in targets if target[:3] not in {t[:3] for t in primary.values()}]
     return (list(primary.values()) + extras)[:MAX_TARGETS]
 
 
 def check_open_redirect(tools, pages: list[dict]) -> list[Finding]:
     findings: list[Finding] = []
     seen: set[tuple] = set()
-    for url, param, method in _candidates(pages):
+    for url, param, method, companions in _candidates(pages):
         if not url:
             continue
         response = tools.request(
             url, method,
-            params={param: PAYLOAD} if method == "GET" else None,
-            data={param: PAYLOAD} if method != "GET" else None,
+            params={**companions, param: PAYLOAD} if method == "GET" else None,
+            data={**companions, param: PAYLOAD} if method != "GET" else None,
             follow_redirects=False,
         )
         status = response.get("status", 0)

@@ -424,8 +424,8 @@ def test_method_variants_do_not_push_other_urls_past_the_cap(module, param):
              for i in range(6)]
     targets = candidates(pages)
     assert len(targets) == 10
-    assert {url for url, _, _ in targets} == {f"http://localhost/p{i}" for i in range(6)}
-    assert targets[0] == ("http://localhost/p0", param, "GET")
+    assert {t[0] for t in targets} == {f"http://localhost/p{i}" for i in range(6)}
+    assert targets[0][:3] == ("http://localhost/p0", param, "GET")
 
 
 def test_open_redirect_reports_once_when_get_and_post_are_vulnerable():
@@ -450,7 +450,7 @@ def test_late_method_variant_keeps_discovery_order_at_the_cap(module, param):
     candidates = importlib.import_module(module)._candidates
     pages = [{"endpoints": [{"url": f"http://localhost/p{i}", "parameters": [param]} for i in range(11)],
               "forms": [{"action": "http://localhost/p0", "method": "POST", "inputs": [{"name": param}]}]}]
-    assert [url for url, _, _ in candidates(pages)] == [f"http://localhost/p{i}" for i in range(10)]
+    assert [t[0] for t in candidates(pages)] == [f"http://localhost/p{i}" for i in range(10)]
 
 
 def _lockout_findings_for(responses):
