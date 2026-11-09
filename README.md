@@ -95,7 +95,7 @@ Bookstore chạy riêng (không qua Docker compose):
 
 ```powershell
 docker start bstore-pg
-java -Dfile.encoding=UTF-8 -jar "d:\Tai lieu\ki6\ATUDWEB\JVA-bookstore\target\dependency\webapp-runner.jar" --port 8081 "d:\Tai lieu\ki6\ATUDWEB\JVA-bookstore\target\ROOT.war"
+java "-Dfile.encoding=UTF-8" -jar "d:\Tai lieu\ki6\ATUDWEB\JVA-bookstore\target\dependency\webapp-runner.jar" --port 8081 "d:\Tai lieu\ki6\ATUDWEB\JVA-bookstore\target\ROOT.war"
 ```
 
 > `docker-compose.yml` còn khai báo sẵn `mutillidae` (:8083) và `bwapp` (:8084) để mở rộng, nhưng luận văn tập trung vào Juice Shop, WebGoat và Bookstore.
