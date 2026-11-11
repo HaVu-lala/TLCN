@@ -38,7 +38,9 @@ PRE_AUTH_CHALLENGE_PHRASES = (
 LOCKOUT_TOKENS = ("locked", "too many", "rate limit", "try again later", "temporarily")
 
 MAX_LOGIN_FORMS = 2
-MAX_LOCKOUT_ATTEMPTS = 4
+# The baseline invalid login plus this many lockout attempts make up the failed-login
+# burst reported as evidence (1 + 9 = 10 consecutive failures before concluding no lockout).
+MAX_LOCKOUT_ATTEMPTS = 9
 
 
 def _field(inputs: list[dict], predicate) -> str | None:

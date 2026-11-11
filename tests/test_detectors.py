@@ -78,15 +78,15 @@ def _lockout_findings(statuses):
 
 @pytest.mark.parametrize("status", [500, 503, 404, 405])
 def test_auth_lockout_not_claimed_when_login_never_processed(status):
-    assert _lockout_findings([status] * 8) == []
+    assert _lockout_findings([status] * 13) == []
 
 
 def test_auth_lockout_not_claimed_when_one_attempt_is_a_server_error():
-    assert _lockout_findings([401] * 7 + [500]) == []
+    assert _lockout_findings([401] * 12 + [500]) == []
 
 
 def test_auth_lockout_still_reported_for_rejected_logins():
-    assert len(_lockout_findings([401] * 8)) == 1
+    assert len(_lockout_findings([401] * 13)) == 1
 
 
 def test_auth_check_quiet_on_hardened_login():
@@ -469,7 +469,7 @@ def _lockout_findings_for(responses):
 @pytest.mark.parametrize("body", ["Invalid password", "Incorrect username or password",
                                   "Mật khẩu không đúng", "Sai mật khẩu"])
 def test_auth_lockout_reported_when_400_403_rejects_credentials(status, body):
-    assert len(_lockout_findings_for([(status, body)] * 8)) == 1
+    assert len(_lockout_findings_for([(status, body)] * 13)) == 1
 
 
 @pytest.mark.parametrize("status", [400, 403])
@@ -477,33 +477,33 @@ def test_auth_lockout_reported_when_400_403_rejects_credentials(status, body):
                                   "Request blocked by WAF", "Please complete the captcha",
                                   "Invalid password. CSRF token expired"])
 def test_auth_lockout_not_claimed_when_400_403_is_not_a_rejection(status, body):
-    assert _lockout_findings_for([(status, body)] * 8) == []
+    assert _lockout_findings_for([(status, body)] * 13) == []
 
 
 def test_auth_lockout_not_claimed_when_one_attempt_is_ambiguous():
-    assert _lockout_findings_for([(401, "x")] * 7 + [(400, "Bad request")]) == []
+    assert _lockout_findings_for([(401, "x")] * 12 + [(400, "Bad request")]) == []
 
 
 def test_auth_lockout_not_claimed_when_burst_turns_forbidden():
-    responses = [(401, "Invalid password")] * 6 + [(403, "Invalid password")] * 2
+    responses = [(401, "Invalid password")] * 11 + [(403, "Invalid password")] * 2
     assert _lockout_findings_for(responses) == []
 
 
 def test_auth_lockout_not_claimed_when_forbidden_starts_after_default_credentials():
-    responses = [(401, "Invalid password")] * 4 + [(403, "Invalid password")] * 4
+    responses = [(401, "Invalid password")] * 4 + [(403, "Invalid password")] * 9
     assert _lockout_findings_for(responses) == []
 
 
 @pytest.mark.parametrize("limited", [(403, "Invalid password"), (429, "x")])
 def test_auth_lockout_not_claimed_when_limiter_recovers_after_default_credentials(limited):
-    responses = [(401, "Invalid password")] + [limited] * 3 + [(401, "Invalid password")] * 4
+    responses = [(401, "Invalid password")] + [limited] * 3 + [(401, "Invalid password")] * 9
     assert _lockout_findings_for(responses) == []
 
 
 def test_auth_lockout_evidence_counts_only_failed_login_burst():
-    findings = _lockout_findings_for([(401, "Invalid password")] * 8)
-    assert "5 consecutive failed logins" in findings[0].evidence
-    assert "[401, 401, 401, 401, 401]" in findings[0].evidence
+    findings = _lockout_findings_for([(401, "Invalid password")] * 13)
+    assert "10 consecutive failed logins" in findings[0].evidence
+    assert "[401, 401, 401, 401, 401, 401, 401, 401, 401, 401]" in findings[0].evidence
 
 
 @pytest.mark.parametrize("status", [200, 401])
@@ -511,11 +511,11 @@ def test_auth_lockout_evidence_counts_only_failed_login_burst():
                                   '{"error": "CSRF verification failed"}', "<p>Invalid <b>CSRF</b> token</p>",
                                   "<p>Vui lòng nhập captcha</p>"])
 def test_auth_lockout_not_claimed_when_challenge_blocks_login(status, body):
-    assert _lockout_findings_for([(status, body)] * 8) == []
+    assert _lockout_findings_for([(status, body)] * 13) == []
 
 
 def test_auth_lockout_not_claimed_when_one_attempt_hits_a_challenge():
-    responses = [(200, "Invalid password")] * 7 + [(200, "Please complete the captcha")]
+    responses = [(200, "Invalid password")] * 12 + [(200, "Please complete the captcha")]
     assert _lockout_findings_for(responses) == []
 
 
@@ -532,7 +532,7 @@ HIDDEN_ONLY_PAGES = [
 @pytest.mark.parametrize("status", [200, 400, 403])
 @pytest.mark.parametrize("body", HIDDEN_ONLY_PAGES)
 def test_auth_lockout_reported_when_challenge_is_only_in_markup(status, body):
-    assert len(_lockout_findings_for([(status, body)] * 8)) == 1
+    assert len(_lockout_findings_for([(status, body)] * 13)) == 1
 
 
 def _default_credential_findings(trial_response):
@@ -558,21 +558,21 @@ def test_default_credentials_still_reported_when_login_sets_cookie():
 
 def test_auth_lockout_reported_when_lock_word_is_only_in_script():
     page = "<script>const accountLocked = false;</script><p>Invalid password</p>"
-    assert len(_lockout_findings_for([(401, page)] * 8)) == 1
+    assert len(_lockout_findings_for([(401, page)] * 13)) == 1
 
 
 @pytest.mark.parametrize("body", ["<p>Account locked</p>", '{"status": "locked"}'])
 def test_auth_lockout_not_claimed_when_lock_message_is_visible(body):
-    assert _lockout_findings_for([(401, "Invalid password")] * 6 + [(401, body)] * 2) == []
+    assert _lockout_findings_for([(401, "Invalid password")] * 11 + [(401, body)] * 2) == []
 
 
 def test_auth_lockout_not_claimed_when_request_fails_validation():
     body = '{"detail":[{"type":"missing","loc":["body","email"],"msg":"Field required"}]}'
-    assert _lockout_findings_for([(422, body)] * 8) == []
+    assert _lockout_findings_for([(422, body)] * 13) == []
 
 
 def test_auth_lockout_reported_when_422_rejects_credentials():
-    assert len(_lockout_findings_for([(422, "Invalid password")] * 8)) == 1
+    assert len(_lockout_findings_for([(422, "Invalid password")] * 13)) == 1
 
 
 @pytest.mark.parametrize("category", ["SQL Injection", "Potential SQL Injection"])

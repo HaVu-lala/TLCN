@@ -10,6 +10,9 @@ from app.schemas import Finding
 
 SQL_ERROR = re.compile(r"SQLITE_ERROR|SequelizeDatabaseError|SQL syntax|syntax error|SQLSyntaxErrorException|unexpected token", re.I)
 
+# Consecutive failed logins observed before concluding no rate limiting / lockout (A07).
+AUTH_FAILURE_ATTEMPTS = 10
+
 
 def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) -> list[Finding]:
     findings = []
@@ -351,7 +354,7 @@ def _webgoat_auth_failures(tools, base: str) -> list[Finding]:
     """A07: repeated failed WebGoat logins return to login?error and are never locked out."""
     url = base + "/WebGoat/login"
     failures = 0
-    for index in range(5):
+    for index in range(AUTH_FAILURE_ATTEMPTS):
         response = tools.request(url, "POST", data={"username": f"sentinel-nouser-{index}", "password": "sentinel-wrong"})
         final = response.get("url", "")
         locked = response["status"] in (429, 423) or "too many" in response.get("body", "").lower()
@@ -359,9 +362,9 @@ def _webgoat_auth_failures(tools, base: str) -> list[Finding]:
             return []
         if "/login" in final and "error" in final:
             failures += 1
-    if failures == 5:
+    if failures == AUTH_FAILURE_ATTEMPTS:
         return [Finding(category="Authentication Failures", severity="medium", url=url, parameter="password",
-                        evidence="5 consecutive failed logins all returned to /login?error and were never rate-limited or locked out.",
+                        evidence=f"{failures} consecutive failed logins all returned to /login?error and were never rate-limited or locked out.",
                         recommendation="Apply rate limiting, account lockout or CAPTCHA after repeated authentication failures.")]
     return []
 
@@ -381,7 +384,7 @@ def _juice_shop_auth_failures(tools, base: str) -> list[Finding]:
     """A07: the REST login rejects wrong credentials but never rate-limits or locks out."""
     url = base + "/rest/user/login"
     statuses = []
-    for index in range(5):
+    for index in range(AUTH_FAILURE_ATTEMPTS):
         response = tools.request(url, "POST",
                                  data=json.dumps({"email": f"sentinel-nouser-{index}@local.lab", "password": "sentinel-wrong"}),
                                  headers={"Content-Type": "application/json"})
