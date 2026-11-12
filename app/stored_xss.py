@@ -23,6 +23,7 @@ này được nêu rõ trong evidence.
 import uuid
 from urllib.parse import urlparse
 
+from app._playwright_compat import playwright_event_loop_policy
 from app.config import settings
 from app.schemas import Finding
 
@@ -66,7 +67,7 @@ def stored_xss_blackbox(tools, pages: list[dict]) -> list[Finding]:
     verify_urls: set[str] = set(urls)  # trang sẽ mở lại để bắt marker nổ
     findings: list[Finding] = []
     try:
-        with sync_playwright() as pw:
+        with playwright_event_loop_policy(), sync_playwright() as pw:
             browser, context = tools._browser_context(pw)
             try:
                 page = context.new_page()

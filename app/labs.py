@@ -4,6 +4,7 @@ import re
 import uuid
 from urllib.parse import quote, urlparse
 
+from app._playwright_compat import playwright_event_loop_policy
 from app.config import settings
 from app.schemas import Finding
 
@@ -26,7 +27,7 @@ def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) 
         if settings.browser_scan_enabled:
             try:
                 from playwright.sync_api import sync_playwright
-                with sync_playwright() as playwright:
+                with playwright_event_loop_policy(), sync_playwright() as playwright:
                     browser, context = tools._browser_context(playwright)
                     try:
                         page = context.new_page()

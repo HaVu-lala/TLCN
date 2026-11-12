@@ -10,10 +10,11 @@ một ứng dụng đã mã hóa đầu ra đúng cách sẽ không thực thi p
 import uuid
 from urllib.parse import urlencode
 
+from app._playwright_compat import playwright_event_loop_policy
 from app.config import settings
 from app.schemas import Finding
 
-MAX_PARAMS = 10
+MAX_PARAMS = 30
 # Payload cho nhiều ngữ cảnh: breakout chuỗi JS (nháy đơn/kép) và thoát thẻ HTML.
 PAYLOAD_TEMPLATES = [
     "';alert('{m}')//",
@@ -53,7 +54,7 @@ def browser_reflected_xss(tools, pages: list[dict]) -> list[Finding]:
     findings: list[Finding] = []
     confirmed: set[tuple[str, str]] = set()
     try:
-        with sync_playwright() as pw:
+        with playwright_event_loop_policy(), sync_playwright() as pw:
             browser, context = tools._browser_context(pw)
             try:
                 page = context.new_page()

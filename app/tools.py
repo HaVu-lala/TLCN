@@ -7,6 +7,7 @@ from urllib.parse import parse_qsl, urldefrag, urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from app._playwright_compat import playwright_event_loop_policy
 from app.config import settings
 from app.schemas import LoginRequest
 from app.scope import ScopeError
@@ -331,7 +332,7 @@ class WebTools:
         if not pages:
             return
         try:
-            with sync_playwright() as playwright:
+            with playwright_event_loop_policy(), sync_playwright() as playwright:
                 browser, context = self._browser_context(playwright)
                 # If we hold a session token, seed it into localStorage under common keys so
                 # single-page apps that keep auth there (not in a cookie) render as logged in,
@@ -553,7 +554,7 @@ class WebTools:
     def browser_request(self, form: dict, field: str, payload: str) -> dict:
         from playwright.sync_api import sync_playwright
 
-        with sync_playwright() as playwright:
+        with playwright_event_loop_policy(), sync_playwright() as playwright:
             browser, context = self._browser_context(playwright)
             page = context.new_page()
             page.goto(form["action"], wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
