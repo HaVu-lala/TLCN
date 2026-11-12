@@ -65,6 +65,7 @@ def _candidates(pages: list[dict]) -> list[tuple[str, str, str, dict]]:
     return (list(primary.values()) + extras)[:MAX_TARGETS]
 
 
+# [TN10 - Path Traversal] Tiêm chuỗi duyệt ngược vào tham số tên tệp, oracle kiểm chữ ký /etc/passwd.
 def check_path_traversal(tools, pages: list[dict]) -> list[Finding]:
     findings: list[Finding] = []
     seen: set[tuple] = set()

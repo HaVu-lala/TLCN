@@ -26,6 +26,7 @@ def _origin(url: str) -> str:
     return f"{p.scheme}://{p.netloc}"
 
 
+# [TN3 - A01 Broken Access Control] BFLA: forced-browsing các endpoint quản trị bằng phiên hiện tại (vd /api/admin/*).
 def check_access_control(tools, pages: list[dict]) -> list[Finding]:
     base = _origin(tools.target_url)
     candidates = list(PRIVILEGED_PATHS)

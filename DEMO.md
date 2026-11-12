@@ -56,7 +56,7 @@ Khi thấy `Application startup complete` là xong → http://localhost:8000
 
 | Môi trường | Cổng | Target URL | Đăng nhập | Login URL / Tài khoản |
 |---|---|---|---|---|
-| **Juice Shop** | 3000 | `http://localhost:3000` | Tùy chọn (login để có thêm BOLA) | `http://localhost:3000/rest/user/login` · `demo@juice.lab` / `Demo12345` |
+| **Juice Shop** | 3000 | `http://localhost:3000` | Tùy chọn (login để có thêm BOLA — **phải đăng ký trước**, xem ghi chú dưới) | `http://localhost:3000/rest/user/login` · `demo@juice.lab` / `Demo12345!` |
 | **WebGoat** | 8082 | `http://127.0.0.1:8082/WebGoat/start.mvc` | **Bắt buộc** | `http://127.0.0.1:8082/WebGoat/login` · `baove2026` / `Sentinel1` |
 | **Bookstore** | 8081 | `http://localhost:8081/` | Không cần | — |
 
@@ -66,7 +66,10 @@ Kết quả tham chiếu (quét thật):
 - Bookstore: **11** điểm lỗ hổng duy nhất (phủ đủ 7 loại; các payload lặp trên cùng URL và tham số chỉ tính một lần).
 
 > Lưu ý: tài khoản tồn tại trên lab **đang chạy**. Nếu khởi động lại container (Juice/WebGoat) thì dữ liệu reset → phải đăng ký lại.
-> - Đăng ký Juice Shop: `POST http://localhost:3000/api/Users` (email, password, passwordRepeat, securityQuestion, securityAnswer).
+> - **Juice Shop KHÔNG có sẵn tài khoản.** Nếu quét qua giao diện và muốn có BOLA, phải **đăng ký trước** rồi mới điền 3 ô đăng nhập. Nếu điền tài khoản chưa tồn tại, hệ thống báo lỗi `Lab login failed` và dừng phiên quét. Cách đăng ký (1 lần, sau khi Juice đã chạy):
+>   - Dễ nhất: mở http://localhost:3000/#/register trên trình duyệt, tạo `demo@juice.lab` / `Demo12345!`.
+>   - Hoặc API: `POST http://localhost:3000/api/Users` (email, password, passwordRepeat, securityQuestion, securityAnswer).
+>   - Hoặc **dùng script Mục 6** (`run_scan_report.py`) — tự đăng ký tài khoản ngẫu nhiên và quét kèm BOLA, không cần bước đăng ký tay.
 > - Đăng ký WebGoat: trang http://localhost:8082/WebGoat/registration (mật khẩu **6-10 ký tự**).
 
 ---
@@ -77,7 +80,7 @@ Kết quả tham chiếu (quét thật):
 2. Nhập **Target URL** (xem bảng Mục 2).
 3. Tick ô **authorized** (bắt buộc).
 4. Nếu quét **WebGoat**: điền thêm **Login URL + Email/username + Password** (bắt buộc, điền đủ cả 3).
-   Nếu quét **Juice Shop** và muốn có BOLA: điền 3 ô đăng nhập của Juice Shop. Không thì để trống.
+   Nếu quét **Juice Shop** và muốn có BOLA: **đăng ký tài khoản trước** (xem ghi chú Mục 2), rồi điền 3 ô đăng nhập (`demo@juice.lab` / `Demo12345!`). Không cần BOLA thì để trống cả 3 ô (điền tài khoản chưa tồn tại sẽ làm hỏng phiên quét).
    Nếu quét **Bookstore**: để trống 3 ô đăng nhập.
 5. Bấm **Start campaign**.
 6. Màn hình hiển thị:
@@ -201,3 +204,122 @@ python demo\run_scan_report.py http://localhost:8081/
 - **WebGoat trả 000 / chưa lên**: đợi thêm 1-2 phút (Spring Boot khởi động chậm).
 - **Bookstore không lên**: kiểm tra `docker start bstore-pg` (cần PostgreSQL cổng 5432) rồi chạy lại webapp-runner.
 - **Cổng 8000/8081 bị chiếm ("address already in use")**: tìm tiến trình giữ cổng `netstat -ano | findstr :8000` rồi `taskkill /F /PID <pid>`.
+
+---
+
+## 11. BẢN ĐỒ CODE — HỆ THỐNG CHẠY NHƯ NÀO, TỪNG KỊCH BẢN Ở FILE NÀO
+
+> Dùng khi cô bảo "mở code chỗ này ra xem". Mẹo: trong editor gõ tìm `[TN` để nhảy tới đúng từng kịch bản (các nhãn tiếng Việt đã gắn sẵn trong code).
+
+### 11.1. Luồng chạy tổng quát (chế độ `deterministic` — đúng số liệu luận văn)
+
+Bấm **Start campaign** ở giao diện → gọi API → chạy pipeline đa tác tử → sinh báo cáo:
+
+| Bước | Việc | File / hàm |
+|---|---|---|
+| Điểm vào | API nhận yêu cầu quét | `app/main.py` → `@app.post("/api/scans")` `create_scan()` → tạo `PentestAgent` |
+| Điều phối | Chạy toàn pipeline | `app/agent.py` → `PentestAgent.run()` / `_run_deterministic()` (có sẵn **BẢN ĐỒ B1–B9** trong comment) |
+| B1 Recon | Thu thập trang/endpoint/form | `ReconAgent.run()` → `WebTools.crawl()` (`app/tools.py`) |
+| B2 Memory | Truy hồi phiên trước (SQLite) | `app/memory.py` |
+| B3 Planning | AI (DeepSeek) chọn kịch bản | `PlanningAgent.run()` (`app/agent.py`), có fallback offline |
+| B4 Attack | Dựng payload theo plan | `AttackAgent.run()` (`app/agent.py`) |
+| B5 Verify | **ORACLE kết luận** (SQLi/XSS/IDOR) | `VerificationAgent.run()` (`app/agent.py`) |
+| B6 Oracle lab | Oracle ghim theo Juice/WebGoat | `check_lab()` (`app/labs.py`) |
+| B7 ReAct refine | 1 vòng tinh chỉnh bổ sung | `AttackAgent.refine()` (`app/agent.py`) |
+| B8 Standing detectors | Chạy registry các kịch bản | `run_all()` (`app/detectors.py`) → các file `app/scenarios/tn*.py` |
+| B9 Report | Dedup + sinh báo cáo tiếng Việt | `ReportingAgent.run()` → `app/report_vi.py` |
+
+- **5 tool**: `app/toolbox.py` (`TOOL_SCHEMAS`): reconnaissance, http_request, probe_and_verify, run_security_checks, generate_report. Chế độ `function_calling` đi qua đây; chế độ `deterministic` dùng **cùng oracle** ở trên.
+- **Scope Guard** (chặn phạm vi): `app/scope.py`. **Cấu hình/chế độ AI**: `app/config.py`.
+
+### 11.2. Bản đồ TỪNG KỊCH BẢN (payload ở đâu, oracle kết luận ở đâu)
+
+> Mỗi kịch bản có 1 file "điểm neo" trong `app/scenarios/tn*.py` (docstring tiếng Việt đầy đủ) + (các) hàm oracle thực thi mang nhãn `[TNx]`.
+
+| Mã | Lỗ hổng (OWASP) | File điểm neo | Code oracle thật (payload + cách kết luận) |
+|---|---|---|---|
+| **TN1** | SQL Injection (A05) | `app/scenarios/tn1_sql_injection.py` | `app/labs.py` khối `[TN1]` — **payload** dấu nháy `'`, cặp `OR 1=1--`/`OR 1=2--` (Juice `/rest/products/search`, WebGoat `attack8`). Đường chủ động: `app/agent.py` `VerificationAgent` (kind `basic_sqli`) qua `app/toolbox.py` `probe_and_verify`. **Kết luận**: chữ ký lỗi SQL/5xx, hoặc true/false đổi số bản ghi. |
+| **TN2** | XSS (A05) | `app/scenarios/tn2_xss.py` | Reflected: `app/browser_xss.py` (Chromium **thực thi** marker alert). Stored: `app/stored_xss.py` + `app/labs.py`. DOM Juice: `app/labs.py` khối `[TN2]`. **Payload** `<img src=x onerror=alert(marker)>`. **Kết luận**: alert marker duy nhất chạy, hoặc đọc lại payload ở request độc lập. |
+| **TN3** | Broken Access Control (A01) | `app/scenarios/tn3_access_control.py` | BFLA forced-browsing: `app/access_control.py` (`/api/admin/*`). BOLA 2 phiên: `app/agent.py` `VerificationAgent` + `app/labs.py` (Juice/WebGoat). **Kết luận**: endpoint quản trị trả dữ liệu khi không quyền, hoặc đọc được đối tượng của người khác qua id. |
+| **TN4** | Thụ động A02/A03/A04 | `app/scenarios/tn4_passive_audit.py` | `app/passive.py` (`passive_findings`) + lab misconfig `app/labs.py` (`lab_misconfig_checks`: `/ftp`, `/actuator/env`). **Không gửi payload** — chỉ đọc header/cookie/version. **Kết luận**: thiếu header bảo mật, thiếu cờ cookie/HSTS, lộ phiên bản, lộ thư mục. |
+| **TN7** | Authentication Failures (A07) | `app/scenarios/tn7_auth.py` | `app/auth_checks.py` (`check_authentication`, form chung) + `app/labs.py` (`lab_auth_failure_checks`, Juice/WebGoat). **Payload**: credential mặc định + **10 lần** đăng nhập sai. **Kết luận**: không khóa/giới hạn tần suất. |
+| **TN8** | Open Redirect | `app/scenarios/tn8_open_redirect.py` | `app/open_redirect.py` + `app/labs.py`. **Payload**: URL ngoài vào tham số đích chuyển hướng. **Kết luận**: header `Location` (3xx) trỏ ra domain ngoài. |
+| **TN9** | CSRF (nghi ngờ) | `app/scenarios/tn9_csrf.py` | `app/csrf.py`. Heuristic: form POST thiếu token chống CSRF → `Potential CSRF` (severity thấp, ngoài tập chấm điểm). |
+| **TN10** | Path Traversal | `app/scenarios/tn10_path_traversal.py` | `app/path_traversal.py` + `app/labs.py`. **Payload**: chuỗi `../` (Juice `/ftp` + null-byte). **Kết luận**: lộ chữ ký `/etc/passwd` hoặc đọc được tệp ngoài thư mục. |
+| **TN11** | XXE | `app/scenarios/tn11_xxe.py` | `app/xxe.py` + `app/labs.py`. **Payload**: tài liệu XML khai báo external entity trỏ `/etc/passwd` (Juice `/file-upload`, WebGoat `/xxe/simple`). **Kết luận**: phản hồi lộ nội dung tệp. |
+
+> Lưu ý: tên file `tn*.py` là **mã kịch bản trong code** (theo OWASP), có thể KHÁC số "Thực nghiệm" trong luận văn (vd luận văn "Thực nghiệm 5 = Authentication Failures" ứng với code `tn7_auth.py`). Khi show code cứ bám theo **tên lỗ hổng**, không bám theo con số.
+
+### 11.3. THỨ TỰ GỌI của từng kịch bản (đầu tiên gọi file nào → rồi file nào)
+
+> Dùng khi cô hỏi "lúc chạy nó đi qua những đâu". **Xương sống chung** (bước 1–4) giống nhau cho mọi kịch bản; chỗ khác nhau là từ bước 5.
+
+**Xương sống chung (mọi kịch bản):**
+```
+1. app/main.py   create_scan()                 (nhận request, tạo PentestAgent)
+2. app/agent.py  PentestAgent._run_deterministic()   (điều phối)
+3. app/agent.py  ReconAgent.run() → app/tools.py WebTools.crawl()   (thu thập trang/endpoint/form)
+4. app/agent.py  PlanningAgent.run()            (AI chọn plan)
+   ... (tới đây rẽ theo từng kịch bản) ...
+cuối. app/agent.py ReportingAgent.run() → app/report_vi.py   (sinh báo cáo)
+```
+
+**TN1 — SQL Injection** (đường CHỦ ĐỘNG):
+```
+5. app/agent.py AttackAgent.run()         (bơm payload: dấu nháy ')
+6. app/agent.py VerificationAgent.run()   (oracle: chữ ký lỗi SQL / 5xx)
+7. app/labs.py  check_lab() khối [TN1]    (oracle lab: cặp OR 1=1-- / OR 1=2--, đếm sản phẩm)
+   (function_calling: bước 5-6 qua app/toolbox.py probe_and_verify)
+```
+
+**TN2 — XSS** (chạy ở 2 chỗ):
+```
+5. app/agent.py AttackAgent.run() + VerificationAgent.run()   (reflected/stored HTML tĩnh)
+6. app/labs.py  check_lab() khối [TN2]                        (DOM XSS Juice qua Chromium)
+7. app/detectors.py run_all() → app/scenarios/tn2_xss.py → app/browser_xss.py browser_reflected_xss()  (Chromium THỰC THI marker) ; stored → app/stored_xss.py
+```
+
+**TN3 — Broken Access Control:**
+```
+5. (nếu có phiên so sánh) app/agent.py VerificationAgent.run()  (BOLA/IDOR) + app/labs.py check_lab() khối [TN3]
+6. app/detectors.py run_all() → app/scenarios/tn3_access_control.py → app/access_control.py check_access_control()   (BFLA forced-browsing /api/admin/*)
+```
+
+**TN4 — Thụ động A02/A03/A04** (không có bước Attack, chỉ đọc phản hồi):
+```
+5. app/detectors.py run_all() → app/scenarios/tn4_passive_audit.py
+     → app/passive.py passive_findings()        (A02 header / A03 version / A04 cookie-HSTS)
+     → app/labs.py lab_misconfig_checks()        (lộ /ftp, /actuator/env)
+```
+
+**TN7 — Authentication Failures:**
+```
+5. app/detectors.py run_all() → app/scenarios/tn7_auth.py
+     → app/auth_checks.py check_authentication()   (form chung: credential mặc định + 10 lần sai)
+     → app/labs.py lab_auth_failure_checks()        (Juice/WebGoat)
+```
+
+**TN8 — Open Redirect:**
+```
+5. app/detectors.py run_all() → app/scenarios/tn8_open_redirect.py
+     → app/open_redirect.py check_open_redirect()  (soi header Location 3xx) + app/labs.py lab_open_redirect_checks()
+```
+
+**TN9 — CSRF:**
+```
+5. app/detectors.py run_all() → app/scenarios/tn9_csrf.py → app/csrf.py check_csrf()   (form POST thiếu token → Potential CSRF)
+```
+
+**TN10 — Path Traversal:**
+```
+5. app/detectors.py run_all() → app/scenarios/tn10_path_traversal.py
+     → app/path_traversal.py check_path_traversal()  (chữ ký /etc/passwd) + app/labs.py lab_path_traversal_checks()  (Juice /ftp null-byte)
+```
+
+**TN11 — XXE:**
+```
+5. app/detectors.py run_all() → app/scenarios/tn11_xxe.py
+     → app/xxe.py check_xxe()  (external entity → /etc/passwd) + app/labs.py lab_xxe_checks()  (Juice /file-upload, WebGoat /xxe/simple)
+```
+
+> Tóm tắt: **TN1 (SQLi)** đi đường chủ động `AttackAgent → VerificationAgent → check_lab`. **TN2, TN3** chạy cả đường chủ động lẫn standing detector. **TN4, TN7, TN8, TN9, TN10, TN11** chạy ở bước **standing detectors** (`detectors.py run_all → scenarios/tn*.py → module oracle`). Tất cả cùng kết thúc ở `ReportingAgent → report_vi.py`.

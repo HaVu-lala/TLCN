@@ -20,6 +20,7 @@ def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) 
     origin = tools.target_url.split("/", 3)[:3]
     base = "/".join(origin)
     if lab == "juice-shop" and "reflected_xss" in plan:
+        # [TN2 - XSS] Reflected/DOM XSS Juice Shop: Chromium THỰC THI marker alert duy nhất (không chỉ phản chiếu chuỗi).
         marker = "sentinel-" + uuid.uuid4().hex
         payload = f'<img src=x onerror="alert(\'{marker}\')">'
         if settings.browser_scan_enabled:
@@ -53,6 +54,7 @@ def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) 
             findings.extend(_juice_shop_stored_xss(tools, base))
         if "idor" in plan:
             findings.extend(_juice_shop_bola(tools, base))
+    # [TN1 - SQL Injection] Oracle sai biệt: dấu nháy gây chữ ký lỗi/5xx, hoặc cặp true/false đổi số bản ghi (Juice /products/search, WebGoat attack8).
     if "basic_sqli" not in plan:
         return findings
     if lab == "juice-shop":
@@ -93,6 +95,7 @@ def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) 
     return findings
 
 
+# [TN2 - XSS] Stored XSS WebGoat: đăng bình luận chứa script rồi đọc lại ở một request độc lập.
 def _webgoat_stored_xss(tools, base: str) -> list[Finding]:
     """WebGoat stored-XSS lesson: post a comment, then read it back in an independent request."""
     url = base + "/WebGoat/CrossSiteScriptingStored/stored-xss"
@@ -116,6 +119,7 @@ def _webgoat_stored_xss(tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN3 - A01 Broken Access Control] BOLA/IDOR WebGoat: phiên đã xác thực đọc đối tượng (profile) của người khác.
 def _webgoat_idor(tools, comparison_tools, base: str) -> list[Finding]:
     """WebGoat IDOR lesson: an authenticated session reads another user's profile object."""
     login_url = base + "/WebGoat/IDOR/login"
@@ -143,6 +147,7 @@ def _webgoat_idor(tools, comparison_tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN2 - XSS] Stored XSS Juice Shop.
 def _juice_shop_stored_xss(tools, base: str) -> list[Finding]:
     """Juice Shop stored-XSS: post a product review, then read it back in an independent request."""
     url = base + "/rest/products/1/reviews"
@@ -161,6 +166,7 @@ def _juice_shop_stored_xss(tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN3 - A01 Broken Access Control] BOLA Juice Shop: đọc giỏ hàng/đối tượng của người dùng khác qua id.
 def _juice_shop_bola(tools, base: str) -> list[Finding]:
     """Juice Shop BOLA: the authenticated session reads a basket object owned by another user."""
     url = base + "/rest/basket/1"
@@ -220,6 +226,7 @@ _OR_EVIL_HOST = "sentinel-redirect.test"
 _OR_ALLOWLISTED = "https://github.com/juice-shop/juice-shop"
 
 
+# [TN8 - Open Redirect] Juice Shop: tham số chuyển hướng ra domain ngoài, soi header Location.
 def _juice_shop_open_redirect(tools, base: str) -> list[Finding]:
     payload = f"https://{_OR_EVIL_HOST}/evil?x={_OR_ALLOWLISTED}"
     response = tools.request(base + "/redirect", params={"to": payload}, follow_redirects=False)
@@ -247,6 +254,7 @@ def lab_open_redirect_checks(tools, pages: list[dict]) -> list[Finding]:
 _PASSWD_SIG = re.compile(r"root:.*:0:0:")
 
 
+# [TN10 - Path Traversal] Juice Shop /ftp: vượt bộ lọc bằng null-byte để đọc tệp ngoài thư mục.
 def _juice_shop_path_traversal(tools, base: str) -> list[Finding]:
     """[Kịch bản 10] Juice Shop /ftp: vượt bộ lọc phần mở rộng bằng null-byte (%2500.md)
     để tải tệp không nằm trong danh sách cho phép (improper file access / traversal-class)."""
@@ -262,6 +270,7 @@ def _juice_shop_path_traversal(tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN11 - XXE] Juice Shop /file-upload: nạp XML khai báo thực thể ngoài.
 def _juice_shop_xxe(tools, base: str) -> list[Finding]:
     """[Kịch bản 11] Juice Shop /file-upload: nạp tệp XML có thực thể ngoài trỏ /etc/passwd.
     Dù endpoint trả HTTP 410 (deprecated), nội dung tệp vẫn lọt vào phản hồi lỗi."""
@@ -278,6 +287,7 @@ def _juice_shop_xxe(tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN10 - Path Traversal] WebGoat: đặt tên tệp chứa ../ để đọc/ghi ngoài thư mục tải lên.
 def _webgoat_path_traversal(tools, base: str) -> list[Finding]:
     """WebGoat PathTraversal/profile-upload: đặt tên tệp chứa ../ để ghi tệp ra
     ngoài thư mục tải lên. WebGoat tiết lộ đường dẫn tuyệt đối khi traversal thành
@@ -296,6 +306,7 @@ def _webgoat_path_traversal(tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN11 - XXE] WebGoat /xxe/simple: gửi tài liệu XML có thực thể ngoài.
 def _webgoat_xxe(tools, base: str) -> list[Finding]:
     """WebGoat xxe/simple: gửi tài liệu XML có thực thể ngoài. WebGoat tự xác nhận
     XXE chạy ('Congratulations'); XML lành tính trả 'Sorry'."""
@@ -350,6 +361,7 @@ def lab_auth_failure_checks(tools, pages: list[dict]) -> list[Finding]:
     return findings
 
 
+# [TN7 - A07 Authentication Failures] WebGoat: 10 lần đăng nhập sai liên tiếp đều về /login?error, không khóa.
 def _webgoat_auth_failures(tools, base: str) -> list[Finding]:
     """A07: repeated failed WebGoat logins return to login?error and are never locked out."""
     url = base + "/WebGoat/login"
@@ -369,6 +381,7 @@ def _webgoat_auth_failures(tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN4 - A02 Security Misconfiguration] WebGoat: lộ endpoint quản trị /actuator/env không cần xác thực.
 def _webgoat_actuator_exposure(tools, base: str) -> list[Finding]:
     """A02: the Spring Boot Actuator /actuator/env endpoint is exposed without authentication."""
     url = base + "/WebGoat/actuator/env"
@@ -380,6 +393,7 @@ def _webgoat_actuator_exposure(tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN7 - A07 Authentication Failures] Juice Shop: 10 lần đăng nhập REST sai đều bị từ chối nhưng không khóa/giới hạn.
 def _juice_shop_auth_failures(tools, base: str) -> list[Finding]:
     """A07: the REST login rejects wrong credentials but never rate-limits or locks out."""
     url = base + "/rest/user/login"
@@ -398,6 +412,7 @@ def _juice_shop_auth_failures(tools, base: str) -> list[Finding]:
     return []
 
 
+# [TN4 - A02 Security Misconfiguration] Juice Shop: lộ thư mục /ftp cho liệt kê tệp không cần xác thực.
 def _juice_shop_exposed_ftp(tools, base: str) -> list[Finding]:
     """A02: the /ftp path returns a browsable directory listing without authentication."""
     response = tools.request(base + "/ftp")

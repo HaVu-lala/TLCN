@@ -156,6 +156,7 @@ def a04_findings(pages: list[dict], target_url: str | None = None) -> list[Findi
     return _dedup(_a04(url, headers))
 
 
+# [TN4 - Kiểm thụ động] Gộp A02 (misconfig/header) + A03 (lộ phiên bản) + A04 (cookie/HSTS); chỉ đọc phản hồi, mỗi nhóm một Finding riêng.
 def passive_findings(pages: list[dict], target_url: str | None = None) -> list[Finding]:
     """Return deduplicated passive findings for the target root response.
 

@@ -40,6 +40,7 @@ SKIP_INPUT_TYPES = {
 }
 
 
+# [TN2 - XSS] Stored XSS hộp đen tổng quát: seed payload rồi đọc lại ở request độc lập (chỉ chạy khi aggressive_scan).
 def stored_xss_blackbox(tools, pages: list[dict]) -> list[Finding]:
     if not settings.aggressive_scan or not settings.browser_scan_enabled:
         return []

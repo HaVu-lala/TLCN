@@ -38,6 +38,7 @@ def _get_param_targets(pages: list[dict]) -> list[tuple[str, str]]:
     return targets[:MAX_PARAMS]
 
 
+# [TN2 - XSS] Reflected XSS: oracle Chromium THỰC THI - chỉ ghi nhận khi alert mang marker duy nhất được kích hoạt.
 def browser_reflected_xss(tools, pages: list[dict]) -> list[Finding]:
     """Xác nhận reflected XSS trên các GET parameter bằng cách thực thi trong Chromium."""
     if not settings.browser_scan_enabled:

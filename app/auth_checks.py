@@ -115,6 +115,7 @@ def _login_was_processed(response: dict) -> bool:
     return any(token in text for token in CREDENTIAL_REJECTION_TOKENS)
 
 
+# [TN7 - A07 Authentication Failures] Oracle hộp đen tổng quát: thử credential mặc định + loạt đăng nhập sai (tới 10 lần) xem có khóa/giới hạn không.
 def check_authentication(tools, pages: list[dict]) -> list[Finding]:
     findings: list[Finding] = []
     # A successful default-credential login sets a session cookie on the shared client;

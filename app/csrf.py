@@ -17,6 +17,7 @@ TOKEN_HINTS = ("csrf", "xsrf", "_token", "authenticity_token", "nonce",
                "__requestverificationtoken", "anti-forgery", "antiforgery")
 
 
+# [TN9 - CSRF] Heuristic nghi ngờ: form POST thiếu token chống CSRF -> Potential CSRF (severity thấp, ngoài tập chấm điểm).
 def check_csrf(tools, pages: list[dict]) -> list[Finding]:
     findings: list[Finding] = []
     seen: set[str] = set()

@@ -35,6 +35,7 @@ def _xml_endpoints(pages: list[dict]) -> list[str]:
     return urls[:MAX_TARGETS]
 
 
+# [TN11 - XXE] Endpoint nhận XML: gửi payload thực thể ngoài trỏ /etc/passwd, oracle kiểm chữ ký.
 def check_xxe(tools, pages: list[dict]) -> list[Finding]:
     findings: list[Finding] = []
     for url in _xml_endpoints(pages):
