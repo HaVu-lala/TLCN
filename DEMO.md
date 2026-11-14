@@ -61,9 +61,11 @@ Khi thấy `Application startup complete` là xong → http://localhost:8000
 | **Bookstore** | 8081 | `http://localhost:8081/` | Không cần | — |
 
 Kết quả tham chiếu (quét thật):
-- Juice Shop: 9 lỗ hổng (không login) hoặc **11** (có login, thêm BOLA + CSRF).
-- WebGoat: **10** lỗ hổng.
-- Bookstore: **11** điểm lỗ hổng duy nhất (phủ đủ 7 loại; các payload lặp trên cùng URL và tham số chỉ tính một lần).
+- Juice Shop: 9 phát hiện (không login) hoặc **11** (có login, thêm BOLA + CSRF).
+- WebGoat: **9** phát hiện.
+- Bookstore: **12** phát hiện (phủ đủ 7 kịch bản): 2 Reflected XSS (`/search`, `/ebook`), 2 nghi ngờ SQLi (`/api/login`, `/api/profile/password`), 2 vượt quyền quản trị (BFLA), Security Misconfiguration, Cryptographic Failures, Authentication Failures, nghi ngờ CSRF, Path Traversal, XXE.
+
+> Các số đếm phát hiện theo môi trường ở trên là bản ghi **function-calling (có DeepSeek)** — mục 3.3.8 luận văn (Juice Shop 9/11, WebGoat 9, Bookstore 12). Phần **đánh giá định lượng** (Precision/Recall/F1, FPR, TP 4/4 Juice & 5/5 WebGoat) lấy từ chế độ **pipeline tất định (không DeepSeek)** — mục 3.4. Mỗi lần chạy live có thể lệch nhẹ tùy chế độ và trạng thái lab; số trong luận văn là số tham chiếu để đối chiếu.
 
 > Lưu ý: tài khoản tồn tại trên lab **đang chạy**. Nếu khởi động lại container (Juice/WebGoat) thì dữ liệu reset → phải đăng ký lại.
 > - **Juice Shop KHÔNG có sẵn tài khoản.** Nếu quét qua giao diện và muốn có BOLA, phải **đăng ký trước** rồi mới điền 3 ô đăng nhập. Nếu điền tài khoản chưa tồn tại, hệ thống báo lỗi `Lab login failed` và dừng phiên quét. Cách đăng ký (1 lần, sau khi Juice đã chạy):
@@ -157,7 +159,8 @@ python demo\run_scan_report.py http://localhost:8081/
 
 ### 8.3. Vai trò của AI
 - **"AI làm gì trong hệ thống?"** → AI (DeepSeek) lo **trinh sát và lập kế hoạch** chọn kịch bản; phần **KẾT LUẬN** lỗ hổng luôn do **oracle tất định** dựa trên bằng chứng, không do AI đoán.
-- **"Có mấy chế độ chạy AI?"** → `deterministic` (pipeline tất định, AI chỉ lập kế hoạch — ổn định, số liệu trong luận văn lấy từ đây), `function_calling` (AI tự gọi từng tool theo ReAct), và `auto` (có key thì function-calling, lỗi thì lùi về deterministic).
+- **"Có mấy chế độ chạy AI?"** → `deterministic` (pipeline tất định, AI chỉ lập kế hoạch — ổn định; dùng cho **phần đánh giá có đáp án** ở mục 3.4: P/R/F1, FPR trên fixture, TP 4/4 Juice & 5/5 WebGoat), `function_calling` (AI tự gọi từng tool theo ReAct, có DeepSeek; dùng cho **bảng tổng hợp phát hiện theo môi trường** ở mục 3.3.8: Juice 9/11, WebGoat 9, Bookstore 12), và `auto` (có key thì function-calling, lỗi thì lùi về deterministic). Cả hai chế độ **dùng chung một bộ oracle kết luận** nên bằng chứng cho mỗi phát hiện là như nhau.
+- **"Nếu pipeline cũng ra kết quả như vậy thì tại sao phải dùng function-calling?"** → (1) Function-calling mới là phần **'AI Agent' đúng đề tài** — AI tự suy luận chọn tool/mục tiêu/payload theo ReAct; pipeline là chuỗi bước người cố định sẵn, bản chất gần một scanner thường. (2) Trên lab đã biết hai chế độ trùng nhau là **điều mong muốn**: chứng minh để AI tự điều phối **vẫn ra đúng ground truth** (nhờ chung bộ oracle), không phá vỡ tính đúng — đây là bằng chứng tin cậy, không phải lý do bỏ AI. (3) Pipeline giữ vai trò **baseline đo định lượng ổn định + phương án dự phòng** (`auto`: không key hoặc LLM lỗi thì lùi về deterministic). Nói thẳng: trong phạm vi đã đo, function-calling **không nhỉnh hơn độ chính xác, còn tốn token và kém ổn định hơn**; giá trị của nó là **tính tự chủ** và khả năng thích ứng với mục tiêu lạ chưa có kịch bản dựng sẵn.
 - **"Dùng mô hình AI nào?"** → **deepseek-chat** qua HTTPS, JSON mode, nhiệt độ 0, max_tokens 1600; chế độ deterministic chỉ gọi LLM **1 lần/phiên** (cho bước lập kế hoạch), có phương án dự phòng offline khi không có key.
 - **"Nếu AI trả lời sai thì sao?"** → Không ảnh hưởng tính đúng: AI chỉ **chọn kịch bản**; nếu AI chọn thiếu/sai, oracle vẫn không kết luận bừa (không có bằng chứng thì không ghi nhận). Khi không có key, kế hoạch dự phòng vẫn phủ các kịch bản.
 - **"ReAct là gì?"** → Vòng lặp Reasoning → Acting → Observation: mô hình suy luận, phát lệnh gọi tool, nhận quan sát (HTTP status/body/headers) rồi lặp lại cho tới khi đủ bằng chứng hoặc hết ngân sách bước.
@@ -167,6 +170,7 @@ python demo\run_scan_report.py http://localhost:8081/
 - **"Làm sao biết không phải báo động giả?"** → Mỗi lỗ hổng chỉ ghi nhận khi có **bằng chứng tất định** từ phản hồi máy chủ (ví dụ sai biệt số bản ghi true/false của SQLi, marker thực thi trong Chromium của XSS, chữ ký `root:...:0:0:` của Path Traversal). Không có bằng chứng thì không kết luận.
 - **"Precision/Recall/F1/FPR đo thế nào?"** → Trên bộ fixture có **ground truth** (`/demo` = ca dương, `/demo-safe` = ca âm): đối chiếu theo category + route + parameter. Kết quả: **P = R = F1 = 1.0, FPR = 0** trên fixture.
 - **"FPR của Juice Shop/WebGoat là bao nhiêu?"** → **Không khả dụng** cho các lab này vì chưa có tập ca âm (không có mẫu số FP/TN). FPR = 0 chỉ tính trên `/demo-safe` (có ca âm ground truth). Đây là điểm cần nói trung thực.
+- **"Thử đăng nhập sai bằng nhiều username khác nhau thì sao khẳng định là không khóa tài khoản?"** → Đúng là phép thử dùng định danh khác nhau mỗi lần và chưa thử lại bằng mật khẩu đúng trên cùng một tài khoản hợp lệ, nên đây là **dấu hiệu heuristic**: hệ thống chỉ kết luận *chưa quan sát thấy cơ chế giới hạn trong lượt thử*, **không** khẳng định chắc chắn thiếu khóa theo từng tài khoản (đúng theo OWASP WSTG-ATHN-03). Giới hạn này đã ghi rõ trong luận văn (mục 3.3.5).
 - **"So với OWASP ZAP/Burp thì sao?"** → Có đối chiếu năng lực với ZAP (Mục 3.4.4 luận văn): ZAP baseline chủ yếu ra cảnh báo cấu hình; Sentinel kết luận lỗ hổng theo bằng chứng. Chưa benchmark định lượng đối sánh trực tiếp (ghi trong phần Giới hạn).
 
 ### 8.5. Kịch bản & OWASP
@@ -211,7 +215,7 @@ python demo\run_scan_report.py http://localhost:8081/
 
 > Dùng khi cô bảo "mở code chỗ này ra xem". Mẹo: trong editor gõ tìm `[TN` để nhảy tới đúng từng kịch bản (các nhãn tiếng Việt đã gắn sẵn trong code).
 
-### 11.1. Luồng chạy tổng quát (chế độ `deterministic` — đúng số liệu luận văn)
+### 11.1. Luồng chạy tổng quát (chế độ `deterministic` — pipeline tất định; function-calling dùng cùng bộ oracle)
 
 Bấm **Start campaign** ở giao diện → gọi API → chạy pipeline đa tác tử → sinh báo cáo:
 
@@ -242,7 +246,7 @@ Bấm **Start campaign** ở giao diện → gọi API → chạy pipeline đa t
 | **TN2** | XSS (A05) | `app/scenarios/tn2_xss.py` | Reflected: `app/browser_xss.py` (Chromium **thực thi** marker alert). Stored: `app/stored_xss.py` + `app/labs.py`. DOM Juice: `app/labs.py` khối `[TN2]`. **Payload** `<img src=x onerror=alert(marker)>`. **Kết luận**: alert marker duy nhất chạy, hoặc đọc lại payload ở request độc lập. |
 | **TN3** | Broken Access Control (A01) | `app/scenarios/tn3_access_control.py` | BFLA forced-browsing: `app/access_control.py` (`/api/admin/*`). BOLA 2 phiên: `app/agent.py` `VerificationAgent` + `app/labs.py` (Juice/WebGoat). **Kết luận**: endpoint quản trị trả dữ liệu khi không quyền, hoặc đọc được đối tượng của người khác qua id. |
 | **TN4** | Thụ động A02/A03/A04 | `app/scenarios/tn4_passive_audit.py` | `app/passive.py` (`passive_findings`) + lab misconfig `app/labs.py` (`lab_misconfig_checks`: `/ftp`, `/actuator/env`). **Không gửi payload** — chỉ đọc header/cookie/version. **Kết luận**: thiếu header bảo mật, thiếu cờ cookie/HSTS, lộ phiên bản, lộ thư mục. |
-| **TN7** | Authentication Failures (A07) | `app/scenarios/tn7_auth.py` | `app/auth_checks.py` (`check_authentication`, form chung) + `app/labs.py` (`lab_auth_failure_checks`, Juice/WebGoat). **Payload**: credential mặc định + **10 lần** đăng nhập sai. **Kết luận**: không khóa/giới hạn tần suất. |
+| **TN7** | Authentication Failures (A07) | `app/scenarios/tn7_auth.py` | `app/auth_checks.py` (`check_authentication`, form chung) + `app/labs.py` (`lab_auth_failure_checks`, Juice/WebGoat). **Payload**: credential mặc định + **10 lần** đăng nhập sai. **Kết luận**: không quan sát thấy cơ chế khóa/giới hạn tần suất trong lượt thử (dấu hiệu heuristic). |
 | **TN8** | Open Redirect | `app/scenarios/tn8_open_redirect.py` | `app/open_redirect.py` + `app/labs.py`. **Payload**: URL ngoài vào tham số đích chuyển hướng. **Kết luận**: header `Location` (3xx) trỏ ra domain ngoài. |
 | **TN9** | CSRF (nghi ngờ) | `app/scenarios/tn9_csrf.py` | `app/csrf.py`. Heuristic: form POST thiếu token chống CSRF → `Potential CSRF` (severity thấp, ngoài tập chấm điểm). |
 | **TN10** | Path Traversal | `app/scenarios/tn10_path_traversal.py` | `app/path_traversal.py` + `app/labs.py`. **Payload**: chuỗi `../` (Juice `/ftp` + null-byte). **Kết luận**: lộ chữ ký `/etc/passwd` hoặc đọc được tệp ngoài thư mục. |

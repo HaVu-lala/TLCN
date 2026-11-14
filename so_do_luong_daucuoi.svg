@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="930" viewBox="0 0 880 930" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 21px; font-weight: 700; fill: #1e3a5f; }
+      .b     { font-size: 14.5px; font-weight: 700; fill: #1f2937; }
+      .s     { font-size: 14.5px; font-weight: 700; fill: #ffffff; }
+      .sm    { font-size: 12.5px; fill: #374151; }
+      .edge  { stroke: #475569; stroke-width: 1.9; fill: none; }
+      .loop  { stroke: #e08a3c; stroke-width: 1.9; fill: none; stroke-dasharray: 5 4; }
+      .lbl   { font-size: 12px; fill: #e08a3c; font-weight: 700; }
+    </style>
+  </defs>
+  <rect width="880" height="930" fill="#ffffff"/>
+  <text x="400" y="38" text-anchor="middle" class="title">Luồng hoạt động một lần quét (từ đầu tới cuối)</text>
+
+  <!-- 1 START -->
+  <rect x="200" y="62" width="400" height="48" rx="24" fill="#0f172a"/>
+  <text x="400" y="92" text-anchor="middle" class="s">Người dùng bấm START</text>
+
+  <!-- 2 Scope -->
+  <rect x="200" y="152" width="400" height="50" rx="8" fill="#fde8e8" stroke="#e05858" stroke-width="1.5"/>
+  <text x="400" y="183" text-anchor="middle" class="b">Scope Guard - chặn mục tiêu ngoài phạm vi</text>
+
+  <!-- 3 Orchestrator -->
+  <rect x="200" y="242" width="400" height="56" rx="8" fill="#d6e4f2" stroke="#5b8fc9" stroke-width="1.5"/>
+  <text x="400" y="266" text-anchor="middle" class="b">Bộ điều phối (Orchestrator)</text>
+  <text x="400" y="285" text-anchor="middle" class="sm">chọn Function-calling hoặc Pipeline</text>
+
+  <!-- LLM side -->
+  <rect x="650" y="244" width="200" height="52" rx="8" fill="#e8dff5" stroke="#9b72c9" stroke-width="1.5"/>
+  <text x="750" y="267" text-anchor="middle" class="b">LLM DeepSeek</text>
+  <text x="750" y="285" text-anchor="middle" class="sm">suy luận, gọi tool</text>
+  <path class="edge" d="M600,262 L650,262" marker-end="url(#a)"/>
+  <path class="edge" d="M650,278 L600,278" marker-end="url(#a)"/>
+
+  <!-- 4 Recon -->
+  <rect x="200" y="338" width="400" height="50" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+  <text x="400" y="362" text-anchor="middle" class="b">1 - Recon: thu thập endpoint</text>
+  <text x="400" y="380" text-anchor="middle" class="sm">dò trang, form, đường dẫn, API ẩn</text>
+
+  <!-- 5 Planning -->
+  <rect x="200" y="428" width="400" height="50" rx="8" fill="#e8dff5" stroke="#9b72c9" stroke-width="1.5"/>
+  <text x="400" y="452" text-anchor="middle" class="b">2 - Planning: AI lập kế hoạch</text>
+  <text x="400" y="470" text-anchor="middle" class="sm">chọn các kịch bản cần thử</text>
+
+  <!-- SQLite side -->
+  <rect x="650" y="430" width="200" height="46" rx="8" fill="#eef2f7" stroke="#8aa0b6" stroke-width="1.5"/>
+  <text x="750" y="451" text-anchor="middle" class="b">Bộ nhớ (SQLite)</text>
+  <text x="750" y="468" text-anchor="middle" class="sm">lịch sử phiên trước</text>
+  <path class="edge" d="M600,448 L650,448" marker-end="url(#a)"/>
+  <path class="edge" d="M650,462 L600,462" marker-end="url(#a)"/>
+
+  <!-- 6 Attack -->
+  <rect x="200" y="518" width="400" height="48" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+  <text x="400" y="547" text-anchor="middle" class="b">3 - Attack: gửi payload tấn công</text>
+
+  <!-- 7 Verification -->
+  <rect x="200" y="606" width="400" height="48" rx="8" fill="#fde5cf" stroke="#e08a3c" stroke-width="1.5"/>
+  <text x="400" y="635" text-anchor="middle" class="b">4 - Verification: Oracle kết luận (theo bằng chứng)</text>
+
+  <!-- ReAct loop -->
+  <path class="loop" d="M200,630 C120,620 120,538 196,538" marker-end="url(#a)"/>
+  <text x="96" y="588" text-anchor="middle" class="lbl">ReAct</text>
+  <text x="96" y="604" text-anchor="middle" class="lbl">tinh chỉnh</text>
+
+  <!-- 8 Detectors -->
+  <rect x="200" y="694" width="400" height="50" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+  <text x="400" y="718" text-anchor="middle" class="b">5 - Detectors theo kịch bản</text>
+  <text x="400" y="736" text-anchor="middle" class="sm">bộ phát hiện tổng quát cho mọi môi trường</text>
+
+  <!-- 9 Report -->
+  <rect x="200" y="784" width="400" height="56" rx="8" fill="#d6e4f2" stroke="#5b8fc9" stroke-width="1.5"/>
+  <text x="400" y="808" text-anchor="middle" class="b">6 - Gộp trùng + Báo cáo tiếng Việt</text>
+  <text x="400" y="827" text-anchor="middle" class="sm">lưu lại phiên, xuất PDF</text>
+
+  <!-- vertical edges -->
+  <path class="edge" d="M400,110 L400,152" marker-end="url(#a)"/>
+  <path class="edge" d="M400,202 L400,242" marker-end="url(#a)"/>
+  <path class="edge" d="M400,298 L400,338" marker-end="url(#a)"/>
+  <path class="edge" d="M400,388 L400,428" marker-end="url(#a)"/>
+  <path class="edge" d="M400,478 L400,518" marker-end="url(#a)"/>
+  <path class="edge" d="M400,566 L400,606" marker-end="url(#a)"/>
+  <path class="edge" d="M400,654 L400,694" marker-end="url(#a)"/>
+  <path class="edge" d="M400,744 L400,784" marker-end="url(#a)"/>
+
+  <!-- footer -->
+  <text x="400" y="885" text-anchor="middle" font-size="13" font-weight="700" fill="#b91c1c">Nguyên tắc: AI chỉ CHỌN thử gì - Oracle mới KẾT LUẬN có lỗ hổng theo bằng chứng</text>
+</svg>

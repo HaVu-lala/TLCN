@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="700" viewBox="0 0 1040 700" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 24px; font-weight: 700; fill: #1e3a5f; }
+      .b     { font-size: 14.5px; font-weight: 700; fill: #1f2937; }
+      .n     { font-size: 13px; fill: #374151; }
+      .edge  { stroke: #475569; stroke-width: 1.8; fill: none; }
+    </style>
+  </defs>
+  <rect width="1040" height="700" fill="#ffffff"/>
+  <text x="520" y="42" text-anchor="middle" class="title">Kiến trúc tổng thể hệ thống AI Pentest Agent</text>
+
+  <!-- Dashboard -->
+  <rect x="400" y="68" width="240" height="56" rx="8" fill="#eceff1" stroke="#90a4ae" stroke-width="1.5"/>
+  <text x="520" y="92" text-anchor="middle" class="b">Người dùng / Dashboard</text>
+  <text x="520" y="112" text-anchor="middle" class="b">(FastAPI)</text>
+
+  <!-- Orchestrator -->
+  <rect x="380" y="168" width="280" height="60" rx="8" fill="#d6e4f2" stroke="#5b8fc9" stroke-width="1.5"/>
+  <text x="520" y="192" text-anchor="middle" class="b">Bộ điều phối tác tử</text>
+  <text x="520" y="212" text-anchor="middle" class="b">(Orchestrator)</text>
+
+  <!-- LLM DeepSeek -->
+  <rect x="770" y="168" width="230" height="60" rx="8" fill="#e8dff5" stroke="#9b72c9" stroke-width="1.5"/>
+  <text x="885" y="192" text-anchor="middle" class="b">LLM DeepSeek (suy luận,</text>
+  <text x="885" y="212" text-anchor="middle" class="b">gọi tool)</text>
+
+  <!-- 5 agents -->
+  <g>
+    <rect x="30"  y="290" width="170" height="64" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+    <text x="115" y="327" text-anchor="middle" class="b">Recon (Thu thập)</text>
+
+    <rect x="222" y="290" width="170" height="64" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+    <text x="307" y="318" text-anchor="middle" class="b">Planning (Lập kế</text>
+    <text x="307" y="338" text-anchor="middle" class="b">hoạch)</text>
+
+    <rect x="414" y="290" width="170" height="64" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+    <text x="499" y="327" text-anchor="middle" class="b">Attack (Tấn công)</text>
+
+    <rect x="606" y="290" width="186" height="64" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+    <text x="699" y="327" text-anchor="middle" class="b">Verification (Xác thực)</text>
+
+    <rect x="814" y="290" width="186" height="64" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+    <text x="907" y="327" text-anchor="middle" class="b">Reporting (Báo cáo)</text>
+  </g>
+
+  <!-- Tool layer -->
+  <rect x="245" y="420" width="560" height="60" rx="8" fill="#fde5cf" stroke="#e08a3c" stroke-width="1.5"/>
+  <text x="525" y="455" text-anchor="middle" class="b">Lớp công cụ (5 tool): WebTools • Scope Guard • Oracle xác thực</text>
+
+  <!-- Target web -->
+  <rect x="185" y="540" width="250" height="64" rx="8" fill="#d6e4f2" stroke="#5b8fc9" stroke-width="1.5"/>
+  <text x="310" y="568" text-anchor="middle" class="b">Ứng dụng web mục tiêu (Juice</text>
+  <text x="310" y="588" text-anchor="middle" class="b">Shop, WebGoat, lab)</text>
+
+  <!-- SQLite -->
+  <rect x="560" y="540" width="280" height="64" rx="8" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+  <text x="700" y="578" text-anchor="middle" class="b">SQLite: Lịch sử + Bộ nhớ dài hạn</text>
+
+  <!-- Note -->
+  <rect x="150" y="636" width="740" height="52" rx="8" fill="#fdf6d0" stroke="#d6c84a" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="520" y="658" text-anchor="middle" class="n">Hai chế độ: Function-calling (AI chỉ gọi tool) và Deterministic (pipeline tất định, dự</text>
+  <text x="520" y="676" text-anchor="middle" class="n">phòng). Ranh giới: AI suy luận – mã nguồn thực thi – oracle xác nhận.</text>
+
+  <!-- EDGES -->
+  <path class="edge" d="M520,124 L520,168" marker-end="url(#a)"/>
+  <!-- orchestrator <-> LLM -->
+  <path class="edge" d="M660,190 L770,190" marker-end="url(#a)"/>
+  <path class="edge" d="M770,206 L660,206" marker-end="url(#a)"/>
+
+  <!-- orchestrator fan-out to 5 -->
+  <path class="edge" d="M400,228 C280,255 160,262 115,290" marker-end="url(#a)"/>
+  <path class="edge" d="M455,228 C400,255 330,265 307,290" marker-end="url(#a)"/>
+  <path class="edge" d="M520,228 L507,290" marker-end="url(#a)"/>
+  <path class="edge" d="M585,228 C640,255 680,265 699,290" marker-end="url(#a)"/>
+  <path class="edge" d="M640,228 C760,255 870,262 907,290" marker-end="url(#a)"/>
+
+  <!-- 5 converge to tool layer -->
+  <path class="edge" d="M115,354 C150,395 360,410 420,420" marker-end="url(#a)"/>
+  <path class="edge" d="M307,354 C340,390 440,408 470,420" marker-end="url(#a)"/>
+  <path class="edge" d="M499,370 L515,420" marker-end="url(#a)"/>
+  <path class="edge" d="M699,354 C660,390 620,408 590,420" marker-end="url(#a)"/>
+  <path class="edge" d="M907,354 C860,395 680,410 630,420" marker-end="url(#a)"/>
+
+  <!-- tool layer to target + sqlite -->
+  <path class="edge" d="M420,480 C380,505 340,518 310,540" marker-end="url(#a)"/>
+  <path class="edge" d="M630,480 C670,505 680,518 700,540" marker-end="url(#a)"/>
+</svg>

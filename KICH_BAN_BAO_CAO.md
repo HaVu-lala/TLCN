@@ -27,6 +27,38 @@ Em nhấn mạnh lại: **AI không tự phán có lỗ hổng. AI chỉ chọn 
 
 ---
 
+## PHẦN 2B — MẠCH CHẠY MỘT LẦN QUÉT TỪ ĐẦU TỚI CUỐI (bản đồ file)
+
+> **Dùng khi cô hỏi:** "Chạy một lần quét thì nó đi qua những file nào?", "Thu thập endpoint ở đâu?", "Kịch bản từ đầu đến cuối ra sao?". Nói theo thứ tự dưới đây, chỉ tay vào từng file.
+
+**EM NÓI:** "Em xin kể lại một lần quét đi từ lúc em bấm Start cho tới khi ra báo cáo, qua 9 bước:
+
+**Khởi động.** Em bấm Start trên giao diện → `app/main.py` hàm `create_scan()` **dòng 237** nhận yêu cầu. Trước tiên nó gọi **Scope Guard**: `validate_target(...)` ở **main.py dòng 239** → `app/scope.py` hàm `validate_target` **dòng 11**, chỉ chấp nhận host nằm trong `settings.allowed_hosts` (**scope.py dòng 18**), host lạ thì ném `ScopeError` (**scope.py dòng 28**) — nên không thể quét bừa site ngoài. Qua được mới tạo `PentestAgent` (**main.py dòng 246**) và gọi `agent.run()` (**main.py dòng 247**) → vào `PentestAgent.run()` ở **`app/agent.py` dòng 273**.
+
+Tại đây hệ thống chọn **một trong hai chế độ** (điều kiện ở `_function_calling_enabled`, **agent.py dòng 269–271**):
+- Có key DeepSeek và chế độ `auto`/`function_calling` → chạy **function-calling** (`_run_function_calling`, **agent.py dòng 281**), AI tự gọi công cụ qua `app/toolbox.py`.
+- Không → chạy **pipeline cố định** (`_run_deterministic`, **agent.py dòng 305**). Em giải thích theo pipeline cho dễ hình dung; function-calling đi qua **cùng các bước verify/detector** bên dưới, chỉ khác ở chỗ AI điều phối.
+
+**Bước 1 — Trinh sát & THU THẬP ENDPOINT.** `pages = self.recon.run()` ở **agent.py dòng 334** → `ReconAgent.run()` (**agent.py dòng 60**) gọi `WebTools.crawl()` ở **`app/tools.py` dòng 190**. Đây chính là chỗ **thu thập endpoint**: duyệt trang, gom các form (ô nhập), đường dẫn, và tham số GET phản chiếu, đưa vào danh sách `endpoints` của mỗi trang (**tools.py dòng 254–290**). Với trang có JavaScript/modal (Bookstore, Juice Shop), còn mở trình duyệt thật bắt endpoint ẩn gọi qua API — `_augment_with_browser` (**tools.py dòng 327**), hợp nhất endpoint ở **tools.py dòng 475**. Đếm số endpoint ở **agent.py dòng 335**, log 'Discovered N page(s) and M endpoint(s)' ở **agent.py dòng 336**.
+
+**Bước 2 — Nhớ phiên trước.** `self.memory.recall(...)` ở **agent.py dòng 337** → `LongTermMemory.recall()` **`app/memory.py` dòng 81** (đọc SQLite `data/sentinel.sqlite3`), lấy lại phát hiện/bề mặt các lần quét cũ cùng host để không làm lại từ đầu.
+
+**Bước 3 — Lập kế hoạch (AI).** `plan = self.planner.run(pages, memory=recalled)` ở **agent.py dòng 339** → `PlanningAgent.run()` (**agent.py dòng 71**) đưa danh sách trang/endpoint cho **DeepSeek** để AI chọn các kịch bản tấn công. Nếu không gọi được AI thì có nhánh dự phòng (`fallback`).
+
+**Bước 4→7 — Vòng lặp tấn công–xác minh theo từng kịch bản.** Vòng `for kind in plan` ở **agent.py dòng 351**:
+- **B4 Tấn công:** `self.attack.run(pages, [kind])` **dòng 353** → `AttackAgent.run()` (**agent.py dòng 92**) gửi payload vào form/endpoint đã thu (bản đồ loại tấn công ở comment **agent.py dòng 313–316**).
+- **B5 Xác minh (ORACLE):** `self.verifier.run(probes)` **dòng 355** → `VerificationAgent.run()` (**agent.py dòng 196**) xem bằng chứng để kết luận; không bằng chứng thì không ghi nhận.
+- **B6 Oracle chuyên biệt lab:** `check_lab(...)` **dòng 356** → **`app/labs.py` dòng 14** (ghim riêng Juice Shop/WebGoat).
+- **B7 ReAct tinh chỉnh:** `self.attack.refine(...)` **dòng 357** rồi xác minh lại ở **dòng 359**.
+
+**Bước 8 — Bộ detector tổng quát (Bookstore và mọi môi trường).** Dựng `DetectorContext` ở **agent.py dòng 368**, gọi `run_all(ctx)` ở **dòng 369** → `app/detectors.py` hàm `run_all` **dòng 46**, chạy lần lượt mọi detector trong `STANDING_DETECTORS` (**detectors.py dòng 49**). Mỗi detector = **một hàm có `@register(...)` trong một file `app/scenarios/tnX_*.py`** (ví dụ `tn4_passive_audit.py` dòng 23–24, `tn1_sql_injection.py` dòng 55–56); các file này gọi detector thật (`app/browser_xss.py`, `app/access_control.py`, `app/passive.py`...). Việc import để đăng ký nằm ở **detectors.py dòng 59**.
+
+**Bước 9 — Gộp trùng & báo cáo.** `dedupe_findings(findings)` ở **agent.py dòng 374** gộp phát hiện trùng; `ReportingAgent.run()` ở **agent.py dòng 375** (**định nghĩa dòng 243**) sinh tóm tắt + khuyến nghị; lưu lại phiên bằng `self.memory.remember(...)` **dòng 377**; trả kết quả **dòng 378**. Khi em mở trang báo cáo tiếng Việt (endpoint `vietnamese_report` **main.py dòng 118**) thì HTML được dựng bởi `render_vietnamese_report()` ở **`app/report_vi.py` dòng 94**.
+
+Tóm một câu: **Start → `create_scan` (`main.py:237`) → Scope Guard (`scope.py:11`) → `agent.run` (`agent.py:273`) → gom endpoint (`tools.py:190`, gọi ở `agent.py:334`) → nhớ phiên (`memory.py:81`) → AI lập kế hoạch (`agent.py:339`) → vòng tấn công/xác minh (`agent.py:351–361`) → detector theo kịch bản (`detectors.py:46` + `scenarios/`) → gộp + báo cáo (`agent.py:374–378`, `report_vi.py:94`).** Toàn bộ mạch điều phối nằm trong `app/agent.py`, và ngay trong file đó có sẵn **bản đồ từng bước ở comment dòng 306–332** để tra nhanh."
+
+---
+
 ## PHẦN 3 — Demo trực tiếp (vừa bấm vừa nói)
 
 **EM NÓI (mở http://localhost:8000):** "Em quét thật luôn ạ. Em nhập địa chỉ ứng dụng lab, bấm Start. 
@@ -61,11 +93,13 @@ Em nhấn mạnh lại: **AI không tự phán có lỗ hổng. AI chỉ chọn 
 ### Kiểm tra thụ động (header / cookie / lộ phiên bản — A02/A03/A04)
 **EM NÓI:** "Nhóm này **không tấn công**, chỉ đọc phản hồi, nên áp dụng cho **cả 3 môi trường** như nhau — code **`app/passive.py`** nhãn `[TN4]` **dòng 159**: thiếu header bảo mật (**dòng 132**), lộ phiên bản (**dòng 141**), cookie thiếu cờ an toàn / thiếu HSTS (**dòng 150**). Thêm phần lộ cấu hình riêng theo lab: **Juice Shop** lộ thư mục `/ftp` (**`app/labs.py` dòng 415**), **WebGoat** lộ `/actuator/env` (**`app/labs.py` dòng 384**)."
 
-### Authentication Failures (đăng nhập sai nhiều lần không khóa)
+### Authentication Failures (đăng nhập sai nhiều lần không thấy cơ chế khóa)
 **EM NÓI:** "Cả 3 môi trường đều thử **10 lần đăng nhập sai liên tiếp**:
 - **Juice Shop** (`/rest/user/login`): **`app/labs.py`** nhãn `[TN7]` **dòng 396**.
 - **WebGoat** (`/WebGoat/login`): **`app/labs.py`** **dòng 364**, 10 lần đều quay về `/login?error`.
-- **Bookstore** (`/api/login`): đi đường tổng quát — **`app/auth_checks.py`** nhãn `[TN7]` **dòng 118**; số 10 đặt ở **dòng 43** (`MAX_LOCKOUT_ATTEMPTS = 9` + 1 lần nền), vòng lặp **dòng 171**. Cả 10 lần không bị khóa thì kết luận."
+- **Bookstore** (`/api/login`): đi đường tổng quát — **`app/auth_checks.py`** nhãn `[TN7]` **dòng 118**; số 10 đặt ở **dòng 43** (`MAX_LOCKOUT_ATTEMPTS = 9` + 1 lần nền = **tổng cộng đúng 10 lần**, không phải 11), vòng lặp **dòng 171**. Cả 10 lần không quan sát thấy cơ chế khóa thì kết luận."
+>
+> **Nói thêm nếu cô hỏi kỹ:** đây là **dấu hiệu heuristic** — mỗi lần thử dùng định danh khác nhau và chưa thử lại bằng mật khẩu đúng trên cùng tài khoản hợp lệ, nên hệ thống chỉ kết luận *chưa thấy cơ chế giới hạn trong lượt thử*, không khẳng định chắc chắn thiếu khóa theo từng tài khoản (theo OWASP WSTG-ATHN-03). Đã ghi rõ trong luận văn.
 
 ### Path Traversal (duyệt thư mục)
 **EM NÓI:** "Đọc được tệp ngoài thư mục cho phép:
@@ -92,12 +126,12 @@ Em nhấn mạnh lại: **AI không tự phán có lỗ hổng. AI chỉ chọn 
 
 **Mạnh — EM NÓI:** 
 "Thứ nhất, **ít báo nhầm** vì mỗi lỗ hổng đều có bằng chứng cụ thể. 
-Thứ hai, em **đối chứng với OWASP ZAP**: trên Bookstore, ZAP và hệ thống của em trùng nhau ở SQLi, XSS, Path Traversal; nhưng hệ thống của em **phát hiện thêm XXE và lỗi vượt quyền quản trị mà ZAP bỏ sót**, lại ít cảnh báo nhiễu hơn. Em còn dùng Burp để **kiểm chứng lại bằng tay** từng lỗ hổng. 
+Thứ hai, em **đối chứng với OWASP ZAP**: trên Bookstore, ZAP và hệ thống của em trùng nhau ở SQLi, XSS, Path Traversal; còn XXE và lỗi vượt quyền quản trị thì **ZAP chưa ghi nhận trong lượt quét** (quét chủ động của ZAP chưa hoàn tất ổn định nên em không kết luận ZAP bỏ sót), trong khi oracle chuyên biệt của hệ thống em xác nhận được, lại ít cảnh báo nhiễu hơn. Em còn dùng Burp để **kiểm chứng lại bằng tay** từng lỗ hổng. 
 Thứ ba, **báo cáo tiếng Việt dễ đọc**."
 
 **Yếu — EM NÓI (chủ động nêu):** 
 "Em cũng xin nêu thẳng hạn chế: 
-- Chế độ để AI tự gọi công cụ thì **chạy không ổn định bằng** chế độ cố định, nên số liệu em lấy từ chế độ cố định. 
+- Chế độ để AI tự gọi công cụ (function-calling) **chạy không ổn định bằng** chế độ cố định (pipeline) và tốn token hơn; nên **phần đánh giá định lượng** (độ chính xác, FPR, TP 4/4 & 5/5 — mục 3.4) em lấy từ chế độ cố định. Riêng **bảng tổng hợp phát hiện theo từng môi trường** (mục 3.3.8: Juice 9/11, WebGoat 9, Bookstore 12) là bản ghi chế độ function-calling có DeepSeek. Hai chế độ dùng **chung bộ oracle kết luận** nên bằng chứng mỗi phát hiện là như nhau. 
 - Em **chưa so sánh định lượng chung mẫu số** với ZAP/Burp — mới là so sánh về **năng lực phát hiện**. 
 - Vài lỗ hổng **nằm sau nhiều bước nghiệp vụ** (như Stored XSS phải mua hàng rồi mới đánh giá) thì quét tự động hộp đen chưa với tới, cần làm tay bổ sung. 
 - Chỉ số 'không báo nhầm' đo trên **bộ dữ liệu có đáp án**, chưa phải trên web lớn."
@@ -108,8 +142,9 @@ Thứ ba, **báo cáo tiếng Việt dễ đọc**."
 
 - **"AI có tự tìm ra lỗ hổng không?"** → "Không ạ. AI chỉ chọn kịch bản để thử. Kết luận là do oracle dựa trên bằng chứng. Em tách rõ hai vai để tránh báo nhầm."
 - **"Sao SQLi trên Bookstore chỉ mức Trung bình?"** → "Vì mới thấy dấu nháy làm máy chủ lỗi 500 (bình thường là 401), nhưng chưa lộ thông báo lỗi SQL rõ ràng, nên em để mức *nghi ngờ* cho trung thực."
-- **"Hơn ZAP chỗ nào?"** → "Trùng ở nhóm tiêm nhiễm; em bắt thêm XXE và vượt quyền quản trị mà ZAP bỏ sót, và ít nhiễu hơn. Nhưng em không nói hơn tuyệt đối."
+- **"Hơn ZAP chỗ nào?"** → "Trùng ở nhóm tiêm nhiễm; XXE và vượt quyền quản trị thì ZAP chưa ghi nhận trong lượt quét (quét chủ động chưa hoàn tất ổn định, nên em không kết luận ZAP bỏ sót), còn hệ thống em xác nhận được và ít nhiễu hơn. Nhưng em không nói hơn tuyệt đối."
 - **"Bằng chứng ở đâu ra?"** → "Em chạy `demo\demo_bangchung_sqli.py` cho cô xem dữ liệu thật từng bước, hoặc dán URL vào trình duyệt xem phản hồi."
+- **"Pipeline cũng ra như vậy thì sao phải dùng function-calling?"** → "Function-calling mới là phần AI Agent đúng đề tài: AI tự chọn công cụ, mục tiêu, payload theo ReAct; còn pipeline là chuỗi bước cố định sẵn. Hai chế độ trùng kết quả trên lab quen là điều tốt — nó chứng minh AI tự điều phối vẫn ra đúng nhờ chung bộ oracle, không phải lý do bỏ AI. Pipeline em giữ làm chuẩn đo ổn định và dự phòng khi không có key. Em nói thẳng là function-calling không giỏi hơn về số liệu, còn tốn token và kém ổn định hơn; giá trị của nó là tính tự chủ và khả năng thích ứng với mục tiêu mới."
 
 ---
 
