@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="680" viewBox="0 0 1060 680" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+    </marker>
+    <style>
+      .title { font-size: 22px; font-weight: 700; fill: #1e3a5f; }
+      .tname { font-size: 15px; font-weight: 700; fill: #1f2937; }
+      .desc  { font-size: 13px; fill: #374151; }
+      .badge { font-size: 16px; font-weight: 700; fill: #ffffff; }
+      .ai    { font-size: 15px; font-weight: 700; fill: #4b2e74; }
+      .tag   { font-size: 11.5px; font-weight: 700; fill: #ffffff; }
+      .edge  { stroke: #475569; stroke-width: 1.8; fill: none; }
+      .note  { font-size: 13px; fill: #475569; }
+    </style>
+  </defs>
+  <rect width="1060" height="680" fill="#ffffff"/>
+  <text x="530" y="40" text-anchor="middle" class="title">Luồng hoạt động trong 5 tool (chế độ Function-calling)</text>
+
+  <!-- AI controller (left) -->
+  <rect x="40" y="90" width="150" height="470" rx="12" fill="#e8dff5" stroke="#9b72c9" stroke-width="1.8"/>
+  <text x="115" y="300" text-anchor="middle" class="ai">AI DeepSeek</text>
+  <text x="115" y="324" text-anchor="middle" class="ai">vòng lặp ReAct</text>
+  <text x="115" y="352" text-anchor="middle" class="desc">chọn tool &amp;</text>
+  <text x="115" y="370" text-anchor="middle" class="desc">đọc kết quả</text>
+
+  <!-- helper: card template drawn inline -->
+  <!-- TOOL 1 -->
+  <rect x="235" y="90" width="785" height="80" rx="10" fill="#d7ead9" stroke="#6aab6e" stroke-width="1.5"/>
+  <circle cx="285" cy="130" r="22" fill="#6aab6e"/>
+  <text x="285" y="137" text-anchor="middle" class="badge">1</text>
+  <text x="325" y="123" class="tname">Reconnaissance Tool (Trinh sát)</text>
+  <text x="325" y="147" class="desc">Thu thập bề mặt: dò trang, form, tham số, endpoint / API ẩn → trả danh sách cho AI</text>
+
+  <!-- TOOL 2 -->
+  <rect x="235" y="182" width="785" height="80" rx="10" fill="#d6e4f2" stroke="#5b8fc9" stroke-width="1.5"/>
+  <circle cx="285" cy="222" r="22" fill="#5b8fc9"/>
+  <text x="285" y="229" text-anchor="middle" class="badge">2</text>
+  <text x="325" y="215" class="tname">HTTP Request &amp; Session Manager</text>
+  <text x="325" y="239" class="desc">Gửi 1 request GET/POST, giữ phiên đăng nhập → trả status, headers, body</text>
+
+  <!-- TOOL 3 -->
+  <rect x="235" y="274" width="785" height="80" rx="10" fill="#fde5cf" stroke="#e08a3c" stroke-width="1.5"/>
+  <circle cx="285" cy="314" r="22" fill="#e08a3c"/>
+  <text x="285" y="321" text-anchor="middle" class="badge">3</text>
+  <text x="325" y="307" class="tname">Probe &amp; Verify (kiểm thử chủ động + xác minh)</text>
+  <text x="325" y="331" class="desc">Tiêm payload + baseline rồi gọi ORACLE kết luận: SQLi / XSS / IDOR</text>
+  <rect x="890" y="300" width="110" height="26" rx="13" fill="#b91c1c"/>
+  <text x="945" y="318" text-anchor="middle" class="tag">ORACLE kết luận</text>
+
+  <!-- TOOL 4 -->
+  <rect x="235" y="366" width="785" height="80" rx="10" fill="#fde5cf" stroke="#e08a3c" stroke-width="1.5"/>
+  <circle cx="285" cy="406" r="22" fill="#e08a3c"/>
+  <text x="285" y="413" text-anchor="middle" class="badge">4</text>
+  <text x="325" y="399" class="tname">Run Security Checks (bộ kiểm tra thường trực)</text>
+  <text x="325" y="423" class="desc">Chạy cả bộ detector A01/A02/A03/A04/A07 + oracle lab trong 1 lần</text>
+  <rect x="890" y="392" width="110" height="26" rx="13" fill="#b91c1c"/>
+  <text x="945" y="410" text-anchor="middle" class="tag">ORACLE kết luận</text>
+
+  <!-- TOOL 5 -->
+  <rect x="235" y="458" width="785" height="80" rx="10" fill="#eef2f7" stroke="#8aa0b6" stroke-width="1.5"/>
+  <circle cx="285" cy="498" r="22" fill="#8aa0b6"/>
+  <text x="285" y="505" text-anchor="middle" class="badge">5</text>
+  <text x="325" y="491" class="tname">Report Generator</text>
+  <text x="325" y="515" class="desc">Gộp trùng, tổng hợp các finding đã xác nhận → báo cáo (không phát hiện thêm)</text>
+  <rect x="905" y="484" width="95" height="26" rx="13" fill="#8aa0b6"/>
+  <text x="952" y="502" text-anchor="middle" class="tag">chỉ tổng hợp</text>
+
+  <!-- double arrows AI <-> each tool -->
+  <path class="edge" d="M190,120 L235,120" marker-end="url(#a)"/>
+  <path class="edge" d="M235,140 L190,140" marker-end="url(#a)"/>
+  <path class="edge" d="M190,212 L235,212" marker-end="url(#a)"/>
+  <path class="edge" d="M235,232 L190,232" marker-end="url(#a)"/>
+  <path class="edge" d="M190,304 L235,304" marker-end="url(#a)"/>
+  <path class="edge" d="M235,324 L190,324" marker-end="url(#a)"/>
+  <path class="edge" d="M190,396 L235,396" marker-end="url(#a)"/>
+  <path class="edge" d="M235,416 L190,416" marker-end="url(#a)"/>
+  <path class="edge" d="M190,488 L235,488" marker-end="url(#a)"/>
+  <path class="edge" d="M235,508 L190,508" marker-end="url(#a)"/>
+
+  <!-- footer notes -->
+  <text x="530" y="588" text-anchor="middle" class="note">Tool 1-4 đều đi qua Scope Guard (chặn ngoài phạm vi). Tool 3 &amp; 4 là 2 tool phát hiện; việc KẾT LUẬN do Oracle/detector, không do AI.</text>
+  <text x="530" y="612" text-anchor="middle" class="note" font-weight="700" fill="#b91c1c">AI chỉ CHỌN gọi tool nào + tham số gì; mọi hành động do Python thực thi, mọi lỗ hổng do Oracle xác nhận.</text>
+</svg>
