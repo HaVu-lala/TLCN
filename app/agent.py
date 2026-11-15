@@ -324,6 +324,7 @@ class PentestAgent:
         self.llm_latency_ms = 0.0
         self.llm_cost_usd: float | None = None
         self.authentication_status = tools.authentication_status
+        self.autonomy = None   # AutonomyReport ở chế độ function-calling; None ở chế độ tất định
 
     def _function_calling_enabled(self) -> bool:
         """True khi có khóa API DeepSeek và chế độ cho phép function-calling (auto hoặc function_calling)."""
@@ -364,6 +365,7 @@ class PentestAgent:
         self.llm_usage = orchestrator.llm_usage
         self.llm_latency_ms = orchestrator.llm_latency_ms
         self.llm_cost_usd = orchestrator.llm_cost_usd
+        self.autonomy = orchestrator.autonomy
         self.trace.append(AgentTrace(agent="ToolCallingAgent", status="completed", detail=orchestrator.trace_detail,
                                      mode="ai", llm_calls=self.llm_calls, llm_usage=self.llm_usage,
                                      llm_latency_ms=self.llm_latency_ms, llm_cost_usd=self.llm_cost_usd))

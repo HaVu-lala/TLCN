@@ -26,7 +26,7 @@ from app.config import settings
 from app.detectors import DetectorContext, run_all
 from app.labs import check_lab
 from app.reasoning import ALLOWED_TESTS, page_context, public_url
-from app.schemas import Finding, dedupe_findings
+from app.schemas import AutonomyReport, Finding, dedupe_findings
 from app.tools import WebTools
 
 MAX_STEPS = 20          # Số bước LLM tối đa trong vòng ReAct
@@ -76,6 +76,7 @@ class ToolBox:
         self.findings: list[Finding] = []
         self.calls = 0
         self.standing_checks_done = False
+        self.invoked_by_model: list[str] = []   # các tool do MÔ HÌNH tự gọi (không tính fallback)
 
     # Tool 1
     def reconnaissance(self, **_) -> dict:
@@ -208,6 +209,7 @@ class ToolBox:
     def dispatch(self, name: str, arguments: dict) -> dict:
         """Định tuyến một lời gọi tool tới method tương ứng; bắt lỗi để không làm gãy vòng lặp."""
         self.calls += 1
+        self.invoked_by_model.append(name)
         handler = getattr(self, name, None)
         if handler is None:
             return {"error": f"unknown tool {name}"}
@@ -255,6 +257,7 @@ class ToolCallingAgent:
         self.steps = 0
         self.trace_detail = ""
         self.auto_completed: list[str] = []
+        self.autonomy: AutonomyReport | None = None
 
     def _chat(self, messages: list[dict]) -> dict:
         """Gọi một lượt chat (có kèm lược đồ tool) tới DeepSeek; cộng dồn token và độ trễ."""
@@ -321,12 +324,16 @@ class ToolCallingAgent:
         # ta tự chạy run_security_checks để độ phủ detector thường trực + oracle lab của chế
         # độ function-calling ít nhất bằng chế độ tất định. Mô hình không gọi tool này thì
         # không được âm thầm báo "hoàn thành" trong khi thiếu các phép kiểm đó.
+        # Chụp mốc TRƯỚC fallback: mọi phát hiện tới đây là do chính mô hình điều phối.
+        # Phần tăng thêm sau khi fallback chạy sẽ được quy cho fallback, không cho AI.
+        findings_by_model = len(self.toolbox.findings)
         auto_completed: list[str] = []
         if not self.toolbox.standing_checks_done:
             self.toolbox.run_security_checks()
             auto_completed.append("run_security_checks")
         if not reported:
             self.toolbox.generate_report()
+        findings_total = len(self.toolbox.findings)
         if settings.deepseek_input_cost_per_million or settings.deepseek_output_cost_per_million:
             self.llm_cost_usd = round(
                 self.llm_usage.get("prompt_tokens", 0) / 1_000_000 * settings.deepseek_input_cost_per_million
@@ -335,4 +342,21 @@ class ToolCallingAgent:
         if auto_completed:
             self.trace_detail += f" Auto-ran skipped mandatory check(s): {', '.join(auto_completed)}."
         self.auto_completed = auto_completed
+
+        # Báo cáo tự chủ: tách phần AI tự làm khỏi phần lưới an toàn bổ sung, để thực nghiệm
+        # đo được AI điều phối giỏi tới đâu thay vì chỉ thấy kết quả cuối (đã có fallback cứu).
+        self.autonomy = AutonomyReport(
+            self_sufficient=not auto_completed,
+            findings_total=findings_total,
+            findings_by_model=findings_by_model,
+            findings_by_fallback=findings_total - findings_by_model,
+            tools_invoked_by_model=sorted(set(self.toolbox.invoked_by_model)),
+            mandatory_autorun=auto_completed,
+            model_steps=self.steps,
+            model_tool_calls=self.toolbox.calls,
+        )
+        self.trace_detail += (
+            f" Autonomy: model self-sufficient={self.autonomy.self_sufficient}, "
+            f"findings by model={findings_by_model}, by fallback={self.autonomy.findings_by_fallback}."
+        )
         return self.toolbox.findings

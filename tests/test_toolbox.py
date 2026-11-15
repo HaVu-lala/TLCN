@@ -61,6 +61,12 @@ def test_tool_calling_loop_executes_tools_and_confirms_finding(monkeypatch):
     assert agent.llm_usage["total_tokens"] == 112
     assert agent.steps == 4
     assert agent.auto_completed == []           # the model called run_security_checks itself
+    # Autonomy report: the model drove everything itself, fallback added nothing.
+    assert agent.autonomy.self_sufficient is True
+    assert agent.autonomy.mandatory_autorun == []
+    assert agent.autonomy.findings_by_fallback == 0
+    assert agent.autonomy.findings_by_model == agent.autonomy.findings_total
+    assert "run_security_checks" in agent.autonomy.tools_invoked_by_model
 
 
 def test_function_calling_auto_runs_skipped_security_checks(monkeypatch):
@@ -89,6 +95,13 @@ def test_function_calling_auto_runs_skipped_security_checks(monkeypatch):
     assert agent.auto_completed == ["run_security_checks"]
     assert "Auto-ran skipped mandatory check" in agent.trace_detail
     assert any(f.category == "Security Misconfiguration" for f in findings)
+    # Autonomy report: the model skipped the standing battery, so those findings are
+    # attributed to the fallback, not to the model (this is the number the thesis must show).
+    assert agent.autonomy.self_sufficient is False
+    assert agent.autonomy.mandatory_autorun == ["run_security_checks"]
+    assert agent.autonomy.findings_by_model == 0
+    assert agent.autonomy.findings_by_fallback == agent.autonomy.findings_total
+    assert "run_security_checks" not in agent.autonomy.tools_invoked_by_model
 
 
 def _login_tools(require_password: bool = True) -> WebTools:

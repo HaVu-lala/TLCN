@@ -87,6 +87,26 @@ class AgentTrace(BaseModel):
     llm_cost_usd: float | None = None
 
 
+class AutonomyReport(BaseModel):
+    """Đo mức tự chủ của AI ở chế độ function-calling, TÁCH phần AI tự làm khỏi phần fallback.
+
+    Mục đích thực nghiệm: chứng minh AI điều phối tốt, không phải nhờ lưới an toàn cứu.
+    - ``self_sufficient``   : AI tự hoàn tất mọi bước bắt buộc, fallback không phải can thiệp.
+    - ``findings_by_model`` : số phát hiện xác nhận TRƯỚC khi fallback chạy (do AI tự điều phối).
+    - ``findings_by_fallback``: số phát hiện do fallback bổ sung sau khi AI bỏ bước.
+    - ``mandatory_autorun`` : các tool bắt buộc mà AI quên, Python phải chạy hộ.
+    - ``tools_invoked_by_model``: các tool AI tự gọi (không trùng lặp).
+    """
+    self_sufficient: bool = True
+    findings_total: int = 0
+    findings_by_model: int = 0
+    findings_by_fallback: int = 0
+    tools_invoked_by_model: list[str] = Field(default_factory=list)
+    mandatory_autorun: list[str] = Field(default_factory=list)
+    model_steps: int = 0
+    model_tool_calls: int = 0
+
+
 class ScanResult(BaseModel):
     """Kết quả hoàn chỉnh của một phiên quét, lưu lại và trả cho giao diện/báo cáo."""
     scan_id: str
@@ -104,3 +124,4 @@ class ScanResult(BaseModel):
     llm_calls: int = 0
     llm_latency_ms: float = 0.0
     llm_cost_usd: float | None = None
+    autonomy: AutonomyReport | None = None
