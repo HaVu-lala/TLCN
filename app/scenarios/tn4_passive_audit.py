@@ -22,10 +22,11 @@ from app.passive import passive_findings
 
 @register("A02/A03/A04 passive response audit")
 def passive_audit(ctx: DetectorContext):
-    # passive_findings trả về cả 3 nhóm A02/A03/A04, mỗi nhóm một category riêng.
+    """Kiểm thụ động trên phản hồi: trả về cả 3 nhóm A02/A03/A04, mỗi nhóm một category riêng."""
     return passive_findings(ctx.pages, ctx.tools.target_url)
 
 
 @register("A02 security misconfiguration (lab)")
 def misconfig_lab(ctx: DetectorContext):
+    """A02 ghim theo lab: lộ /ftp (Juice Shop), lộ /actuator/env (WebGoat)."""
     return lab_misconfig_checks(ctx.tools, ctx.pages)

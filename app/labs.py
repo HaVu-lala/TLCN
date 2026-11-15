@@ -1,4 +1,10 @@
-"""Bounded checks for the supported OWASP training applications."""
+"""Các phép kiểm có giới hạn, ghim sẵn cho những ứng dụng huấn luyện OWASP được hỗ trợ.
+
+Mỗi ứng dụng lab (Juice Shop, WebGoat) có oracle riêng bám đúng từng bài học, nên
+bằng chứng chắc chắn và tỷ lệ báo động giả gần như bằng 0. Các hàm ``lab_*_checks``
+ở cuối file là điểm vào theo từng kịch bản (TN7/TN8/TN10/TN11...) được các file
+trong ``app/scenarios/`` gọi tới.
+"""
 import json
 import re
 import uuid
@@ -11,11 +17,17 @@ from app.schemas import Finding
 
 SQL_ERROR = re.compile(r"SQLITE_ERROR|SequelizeDatabaseError|SQL syntax|syntax error|SQLSyntaxErrorException|unexpected token", re.I)
 
-# Consecutive failed logins observed before concluding no rate limiting / lockout (A07).
+# Số lần đăng nhập sai liên tiếp cần quan sát trước khi kết luận không có giới hạn/khóa (A07).
 AUTH_FAILURE_ATTEMPTS = 10
 
 
 def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) -> list[Finding]:
+    """Chạy các oracle chuyên biệt (ghim sẵn) cho lab được nhận diện, theo ``plan``.
+
+    Nhận diện lab từ cờ ``lab`` trên các trang (juice-shop/webgoat) rồi gọi oracle
+    tương ứng cho XSS/SQLi/BOLA. Mỗi oracle là bằng chứng chắc chắn của đúng bài học
+    lab nên tỷ lệ báo động giả gần như bằng 0.
+    """
     findings = []
     lab = next((page.get("lab") for page in pages if page.get("lab")), None)
     origin = tools.target_url.split("/", 3)[:3]
@@ -66,8 +78,8 @@ def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) 
         if baseline["status"] == 200 and signature and not SQL_ERROR.search(baseline["body"]):
             findings.append(Finding(category="Potential SQL Injection", severity="high", url=injected["url"], parameter="q", evidence=f"GET search: benign input returned HTTP 200; a single quote produced {signature.group(0)} (HTTP {injected['status']}).", recommendation="Use parameterized queries and suppress database error details."))
         else:
-            # SQLite can accept a single quote through adjacent string expressions.
-            # Confirm a change in query logic using a true/false pair over products only.
+            # SQLite có thể chấp nhận một dấu nháy đơn qua các biểu thức chuỗi liền kề.
+            # Xác nhận thay đổi logic truy vấn bằng cặp điều kiện đúng/sai, chỉ đếm số sản phẩm.
             true_result = tools.request(url, params={"q": "sentinel-no-match')) OR 1=1-- "})
             false_result = tools.request(url, params={"q": "sentinel-no-match')) OR 1=2-- "})
             try:
@@ -98,19 +110,19 @@ def check_lab(tools, pages: list[dict], plan: list[str], comparison_tools=None) 
 
 # [TN2 - XSS] Stored XSS WebGoat: đăng bình luận chứa script rồi đọc lại ở một request độc lập.
 def _webgoat_stored_xss(tools, base: str) -> list[Finding]:
-    """WebGoat stored-XSS lesson: post a comment, then read it back in an independent request."""
+    """Bài Stored XSS của WebGoat: đăng một bình luận, rồi đọc lại ở một request độc lập."""
     url = base + "/WebGoat/CrossSiteScriptingStored/stored-xss"
     marker = "sentinel-" + uuid.uuid4().hex
     payload = f"<script>webgoat.customjs.phoneHome();/*{marker}*/</script>"
     posted = tools.request(url, "POST", data=json.dumps({"text": payload}), headers={"Content-Type": "application/json"})
     if posted["status"] != 200:
         return []
-    # WebGoat acknowledges a stored comment with attemptWasMade instead of a lessonCompleted flag.
+    # WebGoat báo đã lưu bình luận bằng cờ attemptWasMade thay vì lessonCompleted.
     try:
         accepted = json.loads(posted["body"]).get("attemptWasMade") is True
     except (ValueError, TypeError, AttributeError):
         accepted = False
-    # Independent read-back: the marker and the raw script tag must persist in a later response.
+    # Đọc lại độc lập: marker và thẻ script thô phải còn tồn tại trong một phản hồi sau.
     read_back = tools.request(url)
     persisted = marker in read_back["body"] and "<script>webgoat.customjs.phoneHome()" in read_back["body"]
     if accepted and persisted:
@@ -122,7 +134,7 @@ def _webgoat_stored_xss(tools, base: str) -> list[Finding]:
 
 # [TN3 - A01 Broken Access Control] BOLA/IDOR WebGoat: phiên đã xác thực đọc đối tượng (profile) của người khác.
 def _webgoat_idor(tools, comparison_tools, base: str) -> list[Finding]:
-    """WebGoat IDOR lesson: an authenticated session reads another user's profile object."""
+    """Bài IDOR của WebGoat: một phiên đã xác thực đọc được đối tượng hồ sơ của người dùng khác."""
     login_url = base + "/WebGoat/IDOR/login"
     profile_url = base + "/WebGoat/IDOR/profile/2342388"
     owner_login = tools.request(login_url, "POST", data={"username": "tom", "password": "cat"})
@@ -133,14 +145,14 @@ def _webgoat_idor(tools, comparison_tools, base: str) -> list[Finding]:
     if not owner_ok:
         return []
     own = tools.request(profile_url)
-    # The owner session is authenticated as tom; reading bill's profile object must be denied.
-    # A confirmed IDOR requires the same object to be reachable without an authorization error.
+    # Phiên chủ đang đăng nhập là tom; đọc hồ sơ của bill lẽ ra phải bị từ chối.
+    # IDOR được xác nhận khi đọc được cùng đối tượng mà không gặp lỗi phân quyền.
     try:
         own_body = json.loads(own["body"])
     except (ValueError, TypeError):
         own_body = {}
-    # Owner tom reading his own id should succeed; reading bill's id (2342388) is the object of another user.
-    # Use the lesson oracle: a successful read of another user's profile completes the IDOR lesson.
+    # tom đọc id của chính mình thì được; đọc id 2342388 là đối tượng của người dùng khác.
+    # Dùng oracle bài học: đọc thành công hồ sơ người khác sẽ hoàn thành bài IDOR.
     if isinstance(own_body, dict) and own_body.get("lessonCompleted") is True:
         return [Finding(category="Potential BOLA/IDOR", severity="high", url=profile_url, parameter="userId",
                         evidence="IDOR profile: an authenticated session read another user's profile object (userId 2342388) without an object-level authorization error. No profile values are retained in the report.",
@@ -148,16 +160,16 @@ def _webgoat_idor(tools, comparison_tools, base: str) -> list[Finding]:
     return []
 
 
-# [TN2 - XSS] Stored XSS Juice Shop.
+# [TN2 - XSS] Stored XSS trên Juice Shop.
 def _juice_shop_stored_xss(tools, base: str) -> list[Finding]:
-    """Juice Shop stored-XSS: post a product review, then read it back in an independent request."""
+    """Stored XSS trên Juice Shop: đăng một đánh giá sản phẩm, rồi đọc lại ở một request độc lập."""
     url = base + "/rest/products/1/reviews"
     marker = "sentinel-" + uuid.uuid4().hex
     payload = f"<iframe src=\"javascript:alert('{marker}')\"></iframe>"
     posted = tools.request(url, "PUT", data=json.dumps({"message": payload, "author": "sentinel@local.lab"}), headers={"Content-Type": "application/json"})
     if posted["status"] != 201:
         return []
-    # Independent read-back: the marker and the raw script-capable tag must persist in a later response.
+    # Đọc lại độc lập: marker và thẻ có khả năng chạy script phải còn tồn tại ở phản hồi sau.
     read_back = tools.request(url)
     persisted = marker in read_back["body"] and "<iframe" in read_back["body"]
     if persisted:
@@ -169,7 +181,7 @@ def _juice_shop_stored_xss(tools, base: str) -> list[Finding]:
 
 # [TN3 - A01 Broken Access Control] BOLA Juice Shop: đọc giỏ hàng/đối tượng của người dùng khác qua id.
 def _juice_shop_bola(tools, base: str) -> list[Finding]:
-    """Juice Shop BOLA: the authenticated session reads a basket object owned by another user."""
+    """BOLA trên Juice Shop: phiên đã xác thực đọc được đối tượng giỏ hàng của người dùng khác."""
     url = base + "/rest/basket/1"
     response = tools.request(url)
     if response["status"] != 200:
@@ -179,8 +191,8 @@ def _juice_shop_bola(tools, base: str) -> list[Finding]:
     except (ValueError, TypeError):
         return []
     owner = body.get("data", {}).get("UserId") if isinstance(body, dict) else None
-    # A confirmed BOLA requires a successful read of a basket whose UserId is not the authenticated user.
-    # The scan's own identity is unknown here, so the foreign object id (1) plus a returned owner id is the oracle.
+    # BOLA được xác nhận khi đọc thành công một giỏ hàng có UserId không phải người đang đăng nhập.
+    # Ở đây không biết danh tính của phiên quét, nên oracle là id đối tượng ngoài (1) kèm UserId trả về.
     if isinstance(owner, int):
         return [Finding(category="Potential BOLA/IDOR", severity="high", url=url, parameter="basketId",
                         evidence=f"Basket object read: GET /rest/basket/1 returned a basket owned by UserId {owner} without an object-level authorization error. No basket contents are retained in the report.",
@@ -189,12 +201,12 @@ def _juice_shop_bola(tools, base: str) -> list[Finding]:
 
 
 def extended_lab_checks(tools, pages: list[dict]) -> list[Finding]:
-    """Additional OWASP Top 10:2025 scenarios verified to exist in the pinned labs.
+    """Các kịch bản OWASP Top 10:2025 bổ sung đã kiểm chứng tồn tại trên lab ghim sẵn.
 
-    Kept separate from check_lab so the core-oracle unit tests are unaffected.
-    Juice Shop: A07 Authentication Failures (no lockout on the REST login) and
-    A02 Security Misconfiguration (exposed /ftp directory listing). All checks are
-    read-only or bounded and run only against the recognized lab.
+    Tách riêng khỏi ``check_lab`` để không ảnh hưởng unit test của oracle lõi.
+    Juice Shop: A07 (REST login không khóa) và A02 (lộ liệt kê thư mục /ftp).
+    WebGoat: A07 và lộ /actuator/env. Mọi phép kiểm đều chỉ-đọc hoặc có giới hạn và
+    chỉ chạy với lab được nhận diện.
     """
     findings: list[Finding] = []
     lab = next((page.get("lab") for page in pages if page.get("lab")), None)
@@ -364,7 +376,7 @@ def lab_auth_failure_checks(tools, pages: list[dict]) -> list[Finding]:
 
 # [TN7 - A07 Authentication Failures] WebGoat: 10 lần đăng nhập sai liên tiếp đều về /login?error, không khóa.
 def _webgoat_auth_failures(tools, base: str) -> list[Finding]:
-    """A07: repeated failed WebGoat logins return to login?error and are never locked out."""
+    """A07: đăng nhập sai liên tiếp trên WebGoat đều quay về login?error mà không bị khóa."""
     url = base + "/WebGoat/login"
     failures = 0
     for index in range(AUTH_FAILURE_ATTEMPTS):
@@ -384,7 +396,7 @@ def _webgoat_auth_failures(tools, base: str) -> list[Finding]:
 
 # [TN4 - A02 Security Misconfiguration] WebGoat: lộ endpoint quản trị /actuator/env không cần xác thực.
 def _webgoat_actuator_exposure(tools, base: str) -> list[Finding]:
-    """A02: the Spring Boot Actuator /actuator/env endpoint is exposed without authentication."""
+    """A02: endpoint Spring Boot Actuator /actuator/env bị lộ mà không cần xác thực."""
     url = base + "/WebGoat/actuator/env"
     response = tools.request(url)
     if response["status"] == 200 and "propertySources" in response.get("body", "") and "activeProfiles" in response.get("body", ""):
@@ -396,7 +408,7 @@ def _webgoat_actuator_exposure(tools, base: str) -> list[Finding]:
 
 # [TN7 - A07 Authentication Failures] Juice Shop: 10 lần đăng nhập REST sai đều bị từ chối nhưng không khóa/giới hạn.
 def _juice_shop_auth_failures(tools, base: str) -> list[Finding]:
-    """A07: the REST login rejects wrong credentials but never rate-limits or locks out."""
+    """A07: REST login của Juice Shop từ chối credential sai nhưng không khóa/giới hạn tần suất."""
     url = base + "/rest/user/login"
     statuses = []
     for index in range(AUTH_FAILURE_ATTEMPTS):
@@ -404,8 +416,8 @@ def _juice_shop_auth_failures(tools, base: str) -> list[Finding]:
                                  data=json.dumps({"email": f"sentinel-nouser-{index}@local.lab", "password": "sentinel-wrong"}),
                                  headers={"Content-Type": "application/json"})
         statuses.append(response["status"])
-    # Confirm this really is an authentication endpoint (wrong creds are rejected)
-    # before concluding that the absence of a lockout is a weakness.
+    # Xác nhận đây đúng là endpoint xác thực (credential sai bị từ chối) trước khi
+    # kết luận việc thiếu cơ chế khóa là một điểm yếu.
     if statuses and statuses[0] in (401, 403) and all(status in (401, 403) for status in statuses):
         return [Finding(category="Authentication Failures", severity="medium", url=url, parameter="password",
                         evidence=f"{len(statuses)} consecutive failed REST logins were all rejected with {statuses[0]} and never rate-limited or locked out (statuses {statuses}).",
@@ -415,7 +427,7 @@ def _juice_shop_auth_failures(tools, base: str) -> list[Finding]:
 
 # [TN4 - A02 Security Misconfiguration] Juice Shop: lộ thư mục /ftp cho liệt kê tệp không cần xác thực.
 def _juice_shop_exposed_ftp(tools, base: str) -> list[Finding]:
-    """A02: the /ftp path returns a browsable directory listing without authentication."""
+    """A02: đường dẫn /ftp trả về liệt kê thư mục duyệt được mà không cần xác thực."""
     response = tools.request(base + "/ftp")
     body = response.get("body", "")
     if response["status"] == 200 and ("acquisition" in body.lower() or "index of /ftp" in body.lower() or "coupons" in body.lower()):

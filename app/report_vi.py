@@ -1,4 +1,4 @@
-"""Báo cáo tiếng Việt, chuyên nghiệp, dạng bảng — dễ hiểu cho cả người ngoài ngành.
+"""Báo cáo tiếng Việt, chuyên nghiệp, dạng bảng, dễ hiểu cho cả người ngoài ngành.
 
 Mỗi phát hiện được giải thích bằng ngôn ngữ thường (là gì / nguy hiểm ra sao /
 nên làm gì), kèm bảng chi tiết kỹ thuật và ánh xạ OWASP Top 10:2025.
@@ -45,9 +45,9 @@ CATEGORY_VI = {
         "Đánh cắp thông tin phiên, chuyển hướng hoặc thao túng giao diện người dùng."),
     "SQL Injection": ("Tấn công cơ sở dữ liệu (SQL Injection)",
         "Kẻ tấn công nhập chuỗi đặc biệt vào ô dữ liệu để lừa cơ sở dữ liệu chạy lệnh của chúng.",
-        "Đọc, sửa, xóa dữ liệu hoặc vượt qua đăng nhập — một trong những lỗ hổng nguy hiểm nhất."),
+        "Đọc, sửa, xóa dữ liệu hoặc vượt qua đăng nhập, một trong những lỗ hổng nguy hiểm nhất."),
     "Potential SQL Injection": ("Nghi ngờ tấn công cơ sở dữ liệu (SQL Injection)",
-        "Hệ thống phản hồi bất thường với dữ liệu đặc biệt — dấu hiệu có thể can thiệp vào câu truy vấn cơ sở dữ liệu.",
+        "Hệ thống phản hồi bất thường với dữ liệu đặc biệt, dấu hiệu có thể can thiệp vào câu truy vấn cơ sở dữ liệu.",
         "Nếu khai thác được: đọc/sửa/xóa dữ liệu hoặc vượt đăng nhập."),
     "Potential BOLA/IDOR": ("Nghi ngờ xem trộm dữ liệu người khác (IDOR)",
         "Chỉ cần đổi mã số trên đường dẫn (ví dụ id=1 thành id=2), người dùng xem được dữ liệu của người khác vì hệ thống không kiểm tra quyền sở hữu.",
@@ -88,6 +88,7 @@ DEFAULT = ("Vấn đề an toàn thông tin", "Phát hiện một điểm yếu 
 
 
 def _sev(finding):
+    """Trả về bộ (nhãn tiếng Việt, màu, thứ hạng) cho mức nghiêm trọng của một phát hiện."""
     return SEVERITY_VI.get(finding.severity, ("Khác", "#5f6368", 0))
 
 
@@ -111,7 +112,7 @@ def render_vietnamese_report(result) -> str:
     for i, f in enumerate(findings, 1):
         label, color, _ = _sev(f)
         title = CATEGORY_VI.get(f.category, DEFAULT)[0]
-        owasp = OWASP_VI.get(f.category, "—")
+        owasp = OWASP_VI.get(f.category, "-")
         summary_rows.append(
             f"<tr><td style='text-align:center'>{i}</td><td>{escape(title)}</td>"
             f"<td><span class='badge' style='background:{color}'>{label}</span></td>"
@@ -123,7 +124,7 @@ def render_vietnamese_report(result) -> str:
     for i, f in enumerate(findings, 1):
         label, color, _ = _sev(f)
         title, what, risk = CATEGORY_VI.get(f.category, DEFAULT)
-        owasp = OWASP_VI.get(f.category, "—")
+        owasp = OWASP_VI.get(f.category, "-")
         details.append(f"""
         <div class='finding'>
           <h3>{i}. {escape(title)} <span class='badge' style='background:{color}'>{label}</span></h3>
@@ -190,7 +191,7 @@ def render_vietnamese_report(result) -> str:
 
     return f"""<!doctype html><html lang='vi'><head><meta charset='utf-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <title>Báo cáo kiểm thử an toàn — {escape(result.scan_id)}</title>
+    <title>Báo cáo kiểm thử an toàn - {escape(result.scan_id)}</title>
     <style>
       html{{color-scheme:light}}
       *{{box-sizing:border-box}}
@@ -267,7 +268,7 @@ def render_vietnamese_report(result) -> str:
       Mỗi lỗ hổng chỉ được ghi nhận khi có bằng chứng xác thực từ phản hồi thực tế của máy chủ
       (không dựa trên phán đoán). Kết quả phản ánh trạng thái tại thời điểm quét.</p>
 
-      <footer>Báo cáo tạo tự động — Hệ thống kiểm thử xâm nhập ứng dụng web có sử dụng AI Agent.
+      <footer>Báo cáo tạo tự động - Hệ thống kiểm thử xâm nhập ứng dụng web có sử dụng AI Agent.
       Chỉ sử dụng cho mục đích kiểm thử hợp pháp. Mã phiên quét: {escape(result.scan_id)}.</footer>
     </body></html>"""
 

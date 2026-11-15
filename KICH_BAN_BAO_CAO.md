@@ -27,35 +27,32 @@ Em nhấn mạnh lại: **AI không tự phán có lỗ hổng. AI chỉ chọn 
 
 ---
 
-## PHẦN 2B — MẠCH CHẠY MỘT LẦN QUÉT TỪ ĐẦU TỚI CUỐI (bản đồ file)
+## PHẦN 2B — MẠCH CHẠY MỘT LẦN QUÉT TỪ ĐẦU TỚI CUỐI (chế độ Function-calling)
 
-> **Dùng khi cô hỏi:** "Chạy một lần quét thì nó đi qua những file nào?", "Thu thập endpoint ở đâu?", "Kịch bản từ đầu đến cuối ra sao?". Nói theo thứ tự dưới đây, chỉ tay vào từng file.
+> **Đây là chế độ chính để trình bày** vì nó đúng phần "AI Agent" của đề tài: AI (DeepSeek) tự quyết định gọi tool nào theo vòng ReAct, Python thực thi, Oracle kết luận. Pipeline tất định chỉ là chế độ dự phòng (nói ở cuối mục).
 
-**EM NÓI:** "Em xin kể lại một lần quét đi từ lúc em bấm Start cho tới khi ra báo cáo, qua 9 bước:
+**EM NÓI:** "Em xin kể một lần quét ở chế độ **function-calling**, từ lúc bấm Start tới khi ra báo cáo:
 
-**Khởi động.** Em bấm Start trên giao diện → `app/main.py` hàm `create_scan()` **dòng 237** nhận yêu cầu. Trước tiên nó gọi **Scope Guard**: `validate_target(...)` ở **main.py dòng 239** → `app/scope.py` hàm `validate_target` **dòng 11**, chỉ chấp nhận host nằm trong `settings.allowed_hosts` (**scope.py dòng 18**), host lạ thì ném `ScopeError` (**scope.py dòng 28**) — nên không thể quét bừa site ngoài. Qua được mới tạo `PentestAgent` (**main.py dòng 246**) và gọi `agent.run()` (**main.py dòng 247**) → vào `PentestAgent.run()` ở **`app/agent.py` dòng 273**.
+**Khởi động.** Em bấm Start → `app/main.py` hàm `create_scan()` **dòng 237** nhận yêu cầu. Trước tiên nó gọi **Scope Guard**: `validate_target(...)` ở **main.py dòng 239** → `app/scope.py` **dòng 11**, chỉ chấp nhận host trong `settings.allowed_hosts` (**scope.py dòng 18**), host lạ thì ném `ScopeError` (**scope.py dòng 28**). Qua được mới tạo `PentestAgent` (**main.py dòng 246**) và gọi `agent.run()` → vào `PentestAgent.run()` **`app/agent.py` dòng 273**.
 
-Tại đây hệ thống chọn **một trong hai chế độ** (điều kiện ở `_function_calling_enabled`, **agent.py dòng 269–271**):
-- Có key DeepSeek và chế độ `auto`/`function_calling` → chạy **function-calling** (`_run_function_calling`, **agent.py dòng 281**), AI tự gọi công cụ qua `app/toolbox.py`.
-- Không → chạy **pipeline cố định** (`_run_deterministic`, **agent.py dòng 305**). Em giải thích theo pipeline cho dễ hình dung; function-calling đi qua **cùng các bước verify/detector** bên dưới, chỉ khác ở chỗ AI điều phối.
+**Chọn chế độ.** Điều kiện ở `_function_calling_enabled` (**agent.py dòng 269–271**): **có key DeepSeek và chế độ `auto`/`function_calling`** → chạy function-calling `_run_function_calling` (**agent.py dòng 281**). Hệ thống dựng `ToolBox` (5 tool, **toolbox.py dòng 67**) và `ToolCallingAgent` (**toolbox.py dòng 230**), rồi gọi `orchestrator.run()` (**toolbox.py dòng 267**).
 
-**Bước 1 — Trinh sát & THU THẬP ENDPOINT.** `pages = self.recon.run()` ở **agent.py dòng 334** → `ReconAgent.run()` (**agent.py dòng 60**) gọi `WebTools.crawl()` ở **`app/tools.py` dòng 190**. Đây chính là chỗ **thu thập endpoint**: duyệt trang, gom các form (ô nhập), đường dẫn, và tham số GET phản chiếu, đưa vào danh sách `endpoints` của mỗi trang (**tools.py dòng 254–290**). Với trang có JavaScript/modal (Bookstore, Juice Shop), còn mở trình duyệt thật bắt endpoint ẩn gọi qua API — `_augment_with_browser` (**tools.py dòng 327**), hợp nhất endpoint ở **tools.py dòng 475**. Đếm số endpoint ở **agent.py dòng 335**, log 'Discovered N page(s) and M endpoint(s)' ở **agent.py dòng 336**.
+**Vòng lặp ReAct (trái tim của chế độ này).** Vòng `for ... range(MAX_STEPS)` ở **toolbox.py dòng 288**: mỗi vòng hệ thống gửi hội thoại + danh sách 5 tool (`TOOL_SCHEMAS`, **toolbox.py dòng 36**) cho DeepSeek qua `_chat` (**toolbox.py dòng 244**). **AI trả về lệnh gọi tool** (tên + tham số JSON); Python thực thi bằng `dispatch` (**toolbox.py dòng 195**) rồi trả kết quả về cho AI quyết bước kế. AI đi theo checklist trong `SYSTEM_PROMPT` (**toolbox.py dòng 206–227**).
 
-**Bước 2 — Nhớ phiên trước.** `self.memory.recall(...)` ở **agent.py dòng 337** → `LongTermMemory.recall()` **`app/memory.py` dòng 81** (đọc SQLite `data/sentinel.sqlite3`), lấy lại phát hiện/bề mặt các lần quét cũ cùng host để không làm lại từ đầu.
+**5 tool AI được phép gọi** (định nghĩa trong `app/toolbox.py`):
+- **Tool 1 `reconnaissance`** (**toolbox.py dòng 80**) → `WebTools.crawl()` (**tools.py dòng 190**) **thu thập endpoint**: trang, form, tham số, API ẩn (mở cả trình duyệt thật `_augment_with_browser` **tools.py dòng 327**). Trả bản đồ bề mặt cho AI.
+- **Tool 2 `http_request`** (**toolbox.py dòng 86**) → gửi 1 request GET/POST có Scope Guard, giữ phiên; trả status/headers/body để AI xem trước khi test.
+- **Tool 3 `probe_and_verify`** (**toolbox.py dòng 145**) → gửi **baseline + payload**, dựng `AttackProbe` rồi gọi **ORACLE** `VerificationAgent.run()` (**agent.py dòng 196**). Lo họ tiêm nhiễm: SQLi, Reflected/Stored XSS, IDOR. Trả `{confirmed, finding}` — **oracle quyết định, không phải AI**.
+- **Tool 4 `run_security_checks`** (**toolbox.py dòng 177**) → chạy cả bộ detector thường trực `run_all()` (**detectors.py dòng 46**: A01/A02/A03/A04/A07) + oracle ghim lab `check_lab()` (**labs.py dòng 14**) trong một lần.
+- **Tool 5 `generate_report`** (**toolbox.py dòng 188**) → gộp trùng `dedupe_findings`, tổng hợp finding đã xác nhận, kết thúc (không phát hiện thêm).
 
-**Bước 3 — Lập kế hoạch (AI).** `plan = self.planner.run(pages, memory=recalled)` ở **agent.py dòng 339** → `PlanningAgent.run()` (**agent.py dòng 71**) đưa danh sách trang/endpoint cho **DeepSeek** để AI chọn các kịch bản tấn công. Nếu không gọi được AI thì có nhánh dự phòng (`fallback`).
+**Lưới an toàn (nói nếu cô hỏi về độ tin cậy).** Nếu AI quên gọi `run_security_checks` hoặc dừng sớm, hệ thống **tự chạy bù** để coverage không thua pipeline (**toolbox.py dòng 313–318**). Nếu function-calling lỗi giữa chừng, `PentestAgent.run()` **tự rơi về pipeline** (`try/except` **agent.py dòng 275–279**).
 
-**Bước 4→7 — Vòng lặp tấn công–xác minh theo từng kịch bản.** Vòng `for kind in plan` ở **agent.py dòng 351**:
-- **B4 Tấn công:** `self.attack.run(pages, [kind])` **dòng 353** → `AttackAgent.run()` (**agent.py dòng 92**) gửi payload vào form/endpoint đã thu (bản đồ loại tấn công ở comment **agent.py dòng 313–316**).
-- **B5 Xác minh (ORACLE):** `self.verifier.run(probes)` **dòng 355** → `VerificationAgent.run()` (**agent.py dòng 196**) xem bằng chứng để kết luận; không bằng chứng thì không ghi nhận.
-- **B6 Oracle chuyên biệt lab:** `check_lab(...)` **dòng 356** → **`app/labs.py` dòng 14** (ghim riêng Juice Shop/WebGoat).
-- **B7 ReAct tinh chỉnh:** `self.attack.refine(...)` **dòng 357** rồi xác minh lại ở **dòng 359**.
+**Ra báo cáo.** `orchestrator.run()` trả danh sách findings về `_run_function_calling` (**agent.py dòng 288**), lưu phiên vào SQLite `memory.remember` (**agent.py dòng 302**). Khi em mở trang báo cáo tiếng Việt (`vietnamese_report` **main.py dòng 118**), HTML dựng bởi `render_vietnamese_report()` (**report_vi.py dòng 94**).
 
-**Bước 8 — Bộ detector tổng quát (Bookstore và mọi môi trường).** Dựng `DetectorContext` ở **agent.py dòng 368**, gọi `run_all(ctx)` ở **dòng 369** → `app/detectors.py` hàm `run_all` **dòng 46**, chạy lần lượt mọi detector trong `STANDING_DETECTORS` (**detectors.py dòng 49**). Mỗi detector = **một hàm có `@register(...)` trong một file `app/scenarios/tnX_*.py`** (ví dụ `tn4_passive_audit.py` dòng 23–24, `tn1_sql_injection.py` dòng 55–56); các file này gọi detector thật (`app/browser_xss.py`, `app/access_control.py`, `app/passive.py`...). Việc import để đăng ký nằm ở **detectors.py dòng 59**.
+Tóm một câu: **Start → `create_scan` (main.py:237) → Scope Guard (scope.py:11) → `_run_function_calling` (agent.py:281) → vòng ReAct: AI (DeepSeek) chọn gọi 5 tool (toolbox.py:288) → Tool 1 recon → Tool 3 probe + ORACLE / Tool 4 checks + ORACLE → Tool 5 report → báo cáo tiếng Việt (report_vi.py:94).** Điểm nhấn: **AI chỉ chọn gọi tool nào và tham số gì; Python thực thi; Oracle/detector mới kết luận lỗ hổng.**
 
-**Bước 9 — Gộp trùng & báo cáo.** `dedupe_findings(findings)` ở **agent.py dòng 374** gộp phát hiện trùng; `ReportingAgent.run()` ở **agent.py dòng 375** (**định nghĩa dòng 243**) sinh tóm tắt + khuyến nghị; lưu lại phiên bằng `self.memory.remember(...)` **dòng 377**; trả kết quả **dòng 378**. Khi em mở trang báo cáo tiếng Việt (endpoint `vietnamese_report` **main.py dòng 118**) thì HTML được dựng bởi `render_vietnamese_report()` ở **`app/report_vi.py` dòng 94**.
-
-Tóm một câu: **Start → `create_scan` (`main.py:237`) → Scope Guard (`scope.py:11`) → `agent.run` (`agent.py:273`) → gom endpoint (`tools.py:190`, gọi ở `agent.py:334`) → nhớ phiên (`memory.py:81`) → AI lập kế hoạch (`agent.py:339`) → vòng tấn công/xác minh (`agent.py:351–361`) → detector theo kịch bản (`detectors.py:46` + `scenarios/`) → gộp + báo cáo (`agent.py:374–378`, `report_vi.py:94`).** Toàn bộ mạch điều phối nằm trong `app/agent.py`, và ngay trong file đó có sẵn **bản đồ từng bước ở comment dòng 306–332** để tra nhanh."
+> **Pipeline (dự phòng) — chỉ nói nếu cô hỏi:** khi không có key DeepSeek hoặc function-calling lỗi, hệ thống chạy `_run_deterministic` (**agent.py dòng 305**): các bước Recon → Planning → Attack → Verify → Detector cố định theo thứ tự, dùng **chung bộ Oracle/detector** với function-calling (bản đồ dòng ở comment **agent.py dòng 306–332**). Vì chung oracle nên bằng chứng mỗi phát hiện là như nhau."
 
 ---
 

@@ -33,7 +33,7 @@ STANDING_DETECTORS: list[tuple[str, Detector]] = []
 
 
 def register(name: str) -> Callable[[Detector], Detector]:
-    """Register a standing detector under a human-readable name.
+    """Đăng ký một detector thường trực dưới một tên dễ đọc.
 
     Được gọi bằng decorator @register("...") bên trong từng file kịch bản.
     """
@@ -44,7 +44,7 @@ def register(name: str) -> Callable[[Detector], Detector]:
 
 
 def run_all(ctx: DetectorContext) -> list[Finding]:
-    """Run every registered standing detector; a failure in one is skipped."""
+    """Chạy mọi detector thường trực đã đăng ký; detector nào lỗi thì bỏ qua, không làm gãy cả dàn."""
     findings: list[Finding] = []
     for _name, detector in STANDING_DETECTORS:
         try:

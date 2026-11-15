@@ -26,6 +26,7 @@ TECHNIQUE = {
 
 
 def _host(url: str) -> str:
+    """Rút gọn URL thành khóa host (gồm cả cổng nếu có) để tra cứu theo mục tiêu."""
     parsed = urlparse(url)
     host = parsed.hostname or ""
     if parsed.port:
@@ -34,7 +35,10 @@ def _host(url: str) -> str:
 
 
 class LongTermMemory:
+    """Bộ nhớ dài hạn bằng SQLite: lưu tri thức khai thác, bề mặt tấn công và phát hiện qua các phiên."""
+
     def __init__(self, database_path: str = "data/sentinel.sqlite3"):
+        """Mở cơ sở dữ liệu và tạo ba bảng tri thức nếu chưa có (knowledge/surface/scans)."""
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as c:
@@ -52,6 +56,7 @@ class LongTermMemory:
                 "CREATE TABLE IF NOT EXISTS ltm_scans (host TEXT PRIMARY KEY, scans INTEGER NOT NULL DEFAULT 0)")
 
     def _connect(self) -> sqlite3.Connection:
+        """Tạo kết nối SQLite với row_factory để truy cập cột theo tên."""
         conn = sqlite3.connect(self.database_path)
         conn.row_factory = sqlite3.Row
         return conn

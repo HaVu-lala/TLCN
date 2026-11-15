@@ -2,7 +2,7 @@
 
 Khác với oracle phản chiếu HTML tĩnh (chỉ bắt khi marker trở thành thẻ
 <script>/<img> thật), oracle này dùng Chromium để xác nhận payload thực sự được
-THỰC THI trong trình duyệt — nhờ đó bắt được cả XSS trong ngữ cảnh chuỗi
+THỰC THI trong trình duyệt, nhờ đó bắt được cả XSS trong ngữ cảnh chuỗi
 JavaScript hoặc thuộc tính (ví dụ `const id='<payload>'`). Chỉ công nhận khi hộp
 thoại alert mang marker duy nhất được kích hoạt, nên tỷ lệ báo động giả rất thấp:
 một ứng dụng đã mã hóa đầu ra đúng cách sẽ không thực thi payload.
@@ -25,6 +25,7 @@ PAYLOAD_TEMPLATES = [
 
 
 def _get_param_targets(pages: list[dict]) -> list[tuple[str, str]]:
+    """Thu các cặp (url, tham_số) của endpoint GET để thử reflected XSS (có giới hạn MAX_PARAMS)."""
     targets: list[tuple[str, str]] = []
     seen = set()
     for page in pages:

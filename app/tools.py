@@ -1,3 +1,18 @@
+"""Bộ công cụ web (WebTools): thu thập bề mặt tấn công và gửi yêu cầu HTTP có kiểm soát.
+
+Đây là lớp "hành động" mà mọi agent dùng để tương tác với mục tiêu. Mọi yêu cầu đi
+ra đều qua Scope Guard (:meth:`WebTools._guard_request`) nên không thể rò ra ngoài
+origin mục tiêu. Các khả năng chính:
+
+  * Thu thập (crawl) bằng HTTP + tăng cường bằng trình duyệt thật (Playwright) để
+    bắt được ứng dụng một trang (SPA) tải nội dung bằng JavaScript.
+  * Đăng nhập hợp pháp cho nhiều loại ứng dụng (API JSON kiểu Juice Shop,
+    form servlet kiểu WebGoat, form WooCommerce có nonce).
+  * Gửi một yêu cầu bất kỳ và ghi nhật ký (phục vụ bằng chứng trong báo cáo).
+
+Toàn bộ yêu cầu đi ra còn được ghi vào nhật ký trực tiếp dùng chung (LIVE_LOG) để
+giao diện theo dõi quá trình quét theo thời gian thực.
+"""
 import json as _json
 import re
 from collections import deque
@@ -18,23 +33,33 @@ LIVE_LOG: dict = {"entries": [], "running": False, "scan": 0}
 
 
 def live_reset() -> None:
+    """Xóa nhật ký trực tiếp và đánh dấu một lần quét mới bắt đầu."""
     LIVE_LOG["entries"] = []
     LIVE_LOG["running"] = True
     LIVE_LOG["scan"] += 1
 
 
 def live_done() -> None:
+    """Đánh dấu lần quét hiện tại đã kết thúc (giao diện ngừng hỏi)."""
     LIVE_LOG["running"] = False
 
 
 def live_snapshot(after: int = 0) -> dict:
+    """Trả về các dòng nhật ký kể từ vị trí ``after`` cùng trạng thái quét hiện tại."""
     entries = LIVE_LOG["entries"]
     return {"entries": entries[after:], "total": len(entries),
             "running": LIVE_LOG["running"], "scan": LIVE_LOG["scan"]}
 
 
 class WebTools:
+    """Công cụ HTTP/trình duyệt có kiểm soát phạm vi, gắn với một mục tiêu cụ thể."""
+
     def __init__(self, target_url: str, session_headers: dict[str, str] | None = None, login: LoginRequest | None = None):
+        """Khởi tạo client HTTP gắn Scope Guard; đăng nhập ngay nếu được cấp thông tin.
+
+        Nếu mục tiêu trỏ tới ``/webgoat`` thì chuẩn hóa về trang khởi động WebGoat.
+        ``session_headers`` cho phép quét với phiên đã xác thực (Cookie/Authorization).
+        """
         normalized_target = target_url.rstrip("/")
         parsed_target = urlparse(normalized_target)
         if parsed_target.path.lower() == "/webgoat":
@@ -54,21 +79,30 @@ class WebTools:
             self._login(login)
 
     def _guard_request(self, request: httpx.Request) -> None:
+        """Scope Guard: ném :class:`ScopeError` nếu yêu cầu/redirect ra ngoài origin mục tiêu."""
         target = urlparse(self.target_url)
         candidate = urlparse(str(request.url))
         if (candidate.scheme, candidate.hostname, candidate.port or (443 if candidate.scheme == "https" else 80)) != (target.scheme, target.hostname, target.port or (443 if target.scheme == "https" else 80)):
             raise ScopeError("Request or redirect is outside the target origin.")
 
     def _browser_context(self, playwright):
+        """Mở Chromium headless + context đã gắn Scope Guard, header và cookie phiên.
+
+        Mọi điều hướng của trình duyệt cũng bị chặn ra ngoài origin (route guard),
+        và cookie của client HTTP được nạp sang để trình duyệt kế thừa phiên.
+        """
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(extra_http_headers=dict(self.client.headers))
+
         def guard_route(route):
+            # Chặn mọi điều hướng ra ngoài origin mục tiêu ngay trong trình duyệt.
             try:
                 self._guard_request(httpx.Request(route.request.method, route.request.url))
             except ValueError:
                 route.abort()
             else:
                 route.continue_()
+
         context.route("**/*", guard_route)
         host = urlparse(self.target_url).hostname
         cookies = [
@@ -80,9 +114,17 @@ class WebTools:
         return browser, context
 
     def _login(self, login: LoginRequest) -> None:
+        """Đăng nhập hợp pháp để tạo phiên quét; hỗ trợ WebGoat, WooCommerce, API JSON và form.
+
+        Thành công được xác định qua: token nhận diện trong thân phản hồi HOẶC một
+        cookie phiên mới được đặt. Thất bại ném :class:`ValueError` với thông điệp
+        chung (không lộ chi tiết nhạy cảm).
+        """
         self._guard_request(httpx.Request("POST", str(login.login_url)))
         try:
             login_url = str(login.login_url)
+
+            # WebGoat: form servlet cổ điển, cần GET trước để lấy phiên rồi POST.
             if "/WebGoat/login" in urlparse(login_url).path:
                 self.client.get(login_url).raise_for_status()
                 response = self.client.post(
@@ -94,10 +136,10 @@ class WebTools:
                     raise ValueError("WebGoat login failed; verify username and password.")
                 self.authentication_status = "authenticated"
                 return
-            # WordPress/WooCommerce: nonce-protected form login. Sniff the login
-            # page with a throwaway client so the main session's cookie jar stays
-            # untouched (a servlet GET here would pre-seed JSESSIONID and defeat the
-            # "new session cookie" success check used by the generic path below).
+
+            # WordPress/WooCommerce: form login có nonce. Thăm dò trang login bằng một
+            # client tạm để KHÔNG làm bẩn cookie jar của phiên chính (nếu GET bằng phiên
+            # chính sẽ pre-seed cookie và làm hỏng phép kiểm "cookie phiên mới" ở nhánh chung).
             if self._is_woocommerce(login_url):
                 page = self.client.get(login_url)
                 page.raise_for_status()
@@ -105,17 +147,19 @@ class WebTools:
                     self.authentication_status = "authenticated"
                     return
                 raise ValueError("WooCommerce login failed; verify username and password.")
+
             cookies_before = set(self.client.cookies.keys())
-            # Modern JSON APIs (e.g. Juice Shop) expect {"email", "password"}.
+            # API JSON hiện đại (vd Juice Shop) mong đợi {"email", "password"}.
             token = self._attempt_login(login_url, json={"email": login.username, "password": login.password})
             new_cookies = set(self.client.cookies.keys()) - cookies_before
             if not token and not new_cookies:
-                # Traditional servlet/form apps expect form fields {"username", "password"}.
+                # Ứng dụng servlet/form truyền thống mong đợi {"username", "password"}.
                 token = self._attempt_login(login_url, data={"username": login.username, "password": login.password})
                 new_cookies = set(self.client.cookies.keys()) - cookies_before
         except (httpx.HTTPError, ValueError) as exc:
             raise ValueError("Lab login failed; verify the authorized lab credentials and login URL.") from exc
-        # Success is a recognized token in the body, or a freshly set session cookie.
+
+        # Thành công = có token nhận diện trong thân, hoặc có cookie phiên mới được đặt.
         if not token and not new_cookies:
             raise ValueError("Lab login failed; verify the authorized lab credentials and login URL.")
         if token:
@@ -124,7 +168,7 @@ class WebTools:
         self.authentication_status = "authenticated"
 
     def _is_woocommerce(self, login_url: str) -> bool:
-        """Detect a WooCommerce login form without touching the main cookie jar."""
+        """Nhận diện form login WooCommerce mà không đụng cookie jar của phiên chính."""
         try:
             with httpx.Client(timeout=settings.request_timeout_seconds, follow_redirects=True,
                               headers=dict(self.client.headers),
@@ -134,13 +178,13 @@ class WebTools:
             return False
 
     def _woocommerce_login(self, login_url: str, page_html: str, login: LoginRequest) -> bool:
-        """Authenticate against a WordPress/WooCommerce my-account login form.
+        """Đăng nhập form my-account của WordPress/WooCommerce.
 
-        WooCommerce rejects a bare {username, password} POST: it requires the
-        per-request `woocommerce-login-nonce`, the `login` submit field, and a
-        `wordpress_test_cookie` to prove cookies work. We parse the real login
-        form, carry over its hidden fields (nonce, _wp_http_referer), override the
-        credentials, and POST. Success is a `wordpress_logged_in_*` session cookie.
+        WooCommerce từ chối POST trần {username, password}: nó cần
+        ``woocommerce-login-nonce`` theo từng request, trường submit ``login`` và
+        cookie ``wordpress_test_cookie``. Hàm phân tích form login thật, giữ lại các
+        trường ẩn (nonce, _wp_http_referer), ghi đè thông tin đăng nhập rồi POST.
+        Thành công = xuất hiện cookie phiên ``wordpress_logged_in_*``.
         """
         soup = BeautifulSoup(page_html, "html.parser")
         form = soup.select_one("form.woocommerce-form-login") or soup.find("form")
@@ -154,7 +198,7 @@ class WebTools:
         fields["username"] = login.username
         fields["password"] = login.password
         fields.setdefault("login", "Log in")
-        # WordPress checks this cookie before accepting a login.
+        # WordPress kiểm tra cookie này trước khi chấp nhận đăng nhập.
         self.client.cookies.set("wordpress_test_cookie", "WP Cookie check",
                                 domain=urlparse(login_url).hostname)
         action = form.get("action") or login_url
@@ -164,10 +208,10 @@ class WebTools:
         return any(name.startswith("wordpress_logged_in") for name in self.client.cookies.keys())
 
     def _attempt_login(self, login_url: str, *, json: dict | None = None, data: dict | None = None) -> str | None:
-        """Post credentials and return a session token if the server returns one.
+        """POST thông tin đăng nhập và trả về token phiên nếu máy chủ cấp.
 
-        Returns None on any non-success response so the caller can try another
-        credential encoding. A set session cookie is detected separately by the caller.
+        Trả ``None`` cho mọi phản hồi không thành công để nơi gọi thử cách mã hóa
+        thông tin khác. Việc đặt cookie phiên được nơi gọi phát hiện riêng.
         """
         try:
             response = self.client.post(login_url, json=json, data=data)
@@ -188,6 +232,15 @@ class WebTools:
         return token if isinstance(token, str) else None
 
     def crawl(self) -> list[dict]:
+        """Thu thập bề mặt tấn công: duyệt trang, trích form, tham số GET và endpoint API.
+
+        Bắt đầu từ URL mục tiêu, duyệt theo chiều rộng trong giới hạn
+        ``max_crawl_pages`` và chỉ trong cùng netloc. Với mỗi trang HTML, trích các
+        form (gồm cả form SPA được suy ra từ script), các liên kết để duyệt tiếp, và
+        quảng bá các endpoint đã biết của những lab/ứng dụng được nhận diện (Juice
+        Shop, WebGoat, bookstore...). Nếu bật trình duyệt và không nhận ra lab, gọi
+        thêm :meth:`_augment_with_browser` để bắt nội dung do JavaScript tạo ra.
+        """
         queue = deque([self.target_url])
         seen: set[str] = set()
         pages: list[dict] = []
@@ -208,6 +261,7 @@ class WebTools:
             content_type = response.headers.get("content-type", "")
             if "/webgoat" in urlparse(self.target_url).path.lower() and urlparse(str(response.url)).path.endswith("/login"):
                 raise ValueError("WebGoat requires a valid lab login or authenticated session cookie.")
+
             forms = []
             if "html" in content_type:
                 soup = BeautifulSoup(response.text, "html.parser")
@@ -218,8 +272,9 @@ class WebTools:
                         if field.get("name")
                     ]
                     forms.append({"action": urljoin(url, form.get("action") or url), "method": (form.get("method") or "get").upper(), "inputs": inputs})
-                # SPA forms submit via fetch(); when a form has no real action, try to
-                # resolve its submit endpoint from same-origin API paths in inline scripts.
+
+                # Form SPA gửi bằng fetch(); khi form không có action thật, cố suy ra
+                # endpoint submit từ các đường dẫn API cùng origin trong script nội tuyến.
                 script_text = " ".join(script.get_text() for script in soup.find_all("script"))
                 api_paths = re.findall(r"""['"](/(?:api|auth)/[A-Za-z0-9_][A-Za-z0-9_./-]*)['"]""", script_text)
                 if api_paths:
@@ -233,6 +288,7 @@ class WebTools:
                         form["action"] = urljoin(url, target)
                         form["method"] = "POST"
                         form["source"] = "js-resolved-endpoint"
+
                 for link in soup.find_all("a", href=True):
                     next_url = urljoin(url, link["href"])
                     link_path = urlparse(next_url).path.lower()
@@ -240,6 +296,7 @@ class WebTools:
                         continue
                     if urlparse(next_url).netloc == base_host:
                         queue.append(next_url)
+
                 if "OWASP Juice Shop" in response.text and not forms:
                     forms.append(
                         {
@@ -249,35 +306,39 @@ class WebTools:
                             "source": "juice-shop-api-adapter",
                         }
                     )
+
             pages.append({"url": url, "status": response.status_code, "content_type": content_type,
                            "headers": dict(response.headers), "body": response.text[:8000],
                            "forms": forms, "endpoints": []})
-            # Treat reflected GET query parameters as injectable endpoints so the
-            # attack stage can test them for reflected XSS / error-based SQLi.
+
+            # Coi mỗi tham số GET phản chiếu là một endpoint có thể tiêm để khâu tấn
+            # công thử reflected XSS / SQLi dựa lỗi.
             query_params = [name for name, _ in parse_qsl(urlparse(url).query, keep_blank_values=True)]
             if query_params:
                 pages[-1]["endpoints"].append({"url": url.split("?", 1)[0], "method": "GET",
                                                "parameters": sorted(set(query_params)), "source": "query-param"})
+
             if '<title>Sentinel Demo Lab</title>' in response.text and urlparse(url).path == "/demo":
                 pages[-1]["fixture_id"] = "sentinel-demo-v2"
             elif '<title>Sentinel Safe Demo Lab</title>' in response.text and urlparse(url).path == "/demo-safe":
                 pages[-1]["fixture_id"] = "sentinel-safe-v2"
             if pages[-1].get("fixture_id"):
-                # Advertise the object endpoint so an agent can test object-level authorization (BOLA/IDOR).
+                # Quảng bá endpoint /object để agent kiểm thử phân quyền cấp đối tượng (BOLA/IDOR).
                 pages[-1]["endpoints"].append({"url": url.rstrip("/") + "/object", "method": "GET",
                                                "parameters": ["id"], "source": "sentinel-demo-adapter"})
+
             if "OWASP Juice Shop" in response.text:
                 pages[-1]["lab"] = "juice-shop"
-                # Known oracle-backed Juice Shop surfaces, loaded through the SPA and absent from the shell.
-                # Only bounded routes with a verification oracle are advertised so the planner can select them.
+                # Các bề mặt Juice Shop có oracle đã biết, chỉ tải qua SPA nên không có
+                # trong HTML vỏ. Chỉ quảng bá route có oracle để khâu lập kế hoạch chọn.
                 pages[-1]["endpoints"].extend([
                     {"url": urljoin(url, "/rest/products/1/reviews"), "method": "PUT", "parameters": ["message"], "source": "juice-shop-lab-adapter"},
                     {"url": urljoin(url, "/rest/basket/1"), "method": "GET", "parameters": ["basketId"], "source": "juice-shop-lab-adapter"},
                 ])
             elif "/webgoat" in urlparse(self.target_url).path.lower():
                 pages[-1]["lab"] = "webgoat"
-                # Lesson endpoints are loaded dynamically and are absent from the landing HTML.
-                # Only bounded, oracle-backed lesson routes are advertised so the planner can select them.
+                # Endpoint bài học WebGoat tải động, không có trong HTML trang chủ.
+                # Chỉ quảng bá route bài học có oracle để khâu lập kế hoạch chọn.
                 pages[-1]["endpoints"].extend([
                     {"url": urljoin(url, "/WebGoat/SqlInjection/attack8"), "method": "POST", "parameters": [], "source": "webgoat-lab-adapter"},
                     {"url": urljoin(url, "/WebGoat/CrossSiteScriptingStored/stored-xss"), "method": "POST", "parameters": ["text"], "source": "webgoat-lab-adapter"},
@@ -292,19 +353,20 @@ class WebTools:
                     {"url": urljoin(url, "/ebook"), "method": "GET", "parameters": ["file"], "source": "bookstore-adapter"},
                     {"url": urljoin(url, "/import"), "method": "POST", "parameters": [], "accepts_xml": True, "source": "bookstore-adapter"},
                 ])
+
         if settings.browser_scan_enabled and not any(page.get("lab") for page in pages):
             self._augment_with_browser(pages)
         self._inject_login_surface(pages)
         return pages
 
     def _inject_login_surface(self, pages: list[dict]) -> None:
-        """Advertise a user-supplied login endpoint as an attackable form.
+        """Quảng bá endpoint login do người dùng cung cấp thành một form có thể tấn công.
 
-        A login page is often a JavaScript modal the crawler never reaches, so a
-        provided login_url would otherwise go untested. Exposing it as a form with
-        username/password fields lets the attack stage probe it for SQL injection
-        and lets the A07 check observe default-credential / lockout behaviour. The
-        oracle still decides every finding, so no false positive is introduced.
+        Trang đăng nhập thường là modal JavaScript mà crawler không chạm tới, nên
+        một ``login_url`` được cung cấp sẽ không được kiểm. Bằng cách phơi nó dưới
+        dạng form có trường username/password, khâu tấn công có thể thử SQLi và khâu
+        A07 quan sát hành vi credential mặc định / khóa tài khoản. Oracle vẫn quyết
+        định mọi phát hiện nên không sinh báo động giả.
         """
         if not self.login_spec:
             return
@@ -325,6 +387,14 @@ class WebTools:
         })
 
     def _augment_with_browser(self, pages: list[dict]) -> None:
+        """Tăng cường thu thập bằng Chromium: render SPA, bắt endpoint mạng và duyệt sâu.
+
+        Nếu đang giữ token phiên, nạp token vào localStorage dưới các khóa phổ biến
+        để SPA hiển thị trạng thái đã đăng nhập, lộ ra menu và trang sâu. Ghi lại các
+        request mạng cùng origin (kèm tên trường thân JSON) làm endpoint, duyệt liên
+        kết cùng origin nhiều cấp, và khai thác HTML server-rendered để tìm endpoint
+        API ẩn (vd đổi mật khẩu). Mọi thao tác đều bọc try/except và có giới hạn.
+        """
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
@@ -334,9 +404,9 @@ class WebTools:
         try:
             with playwright_event_loop_policy(), sync_playwright() as playwright:
                 browser, context = self._browser_context(playwright)
-                # If we hold a session token, seed it into localStorage under common keys so
-                # single-page apps that keep auth there (not in a cookie) render as logged in,
-                # exposing authenticated menus and the deep pages linked from them.
+                # Nếu giữ token phiên, nạp vào localStorage dưới các khóa phổ biến để
+                # SPA lưu auth ở đó (không phải cookie) hiển thị như đã đăng nhập, lộ
+                # menu và trang sâu liên kết từ đó.
                 if self.session_token:
                     context.add_init_script(
                         "try { var t = " + _json.dumps(self.session_token) + "; "
@@ -347,6 +417,7 @@ class WebTools:
                 network_requests: list[dict] = []
 
                 def capture_request(request) -> None:
+                    # Ghi lại request cùng origin (bỏ tài nguyên tĩnh) làm endpoint.
                     parsed = urlparse(request.url)
                     excluded = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2")
                     ignored_prefixes = ("/assets/", "/socket.io/", "/static/")
@@ -357,8 +428,8 @@ class WebTools:
                             "parameters": [name for name, _ in parse_qsl(parsed.query, keep_blank_values=True)],
                             "source": "browser-network",
                         }
-                        # Record JSON body field names so the attack stage can inject into
-                        # a JSON body parameter (e.g. a password-change API), not only query/form.
+                        # Ghi tên trường thân JSON để khâu tấn công có thể tiêm vào
+                        # tham số trong thân JSON (vd API đổi mật khẩu), không chỉ query/form.
                         if request.method in ("POST", "PUT", "PATCH"):
                             try:
                                 body = _json.loads(request.post_data or "")
@@ -394,11 +465,12 @@ class WebTools:
                         {"action": page.url, "method": "GET", "inputs": [item], "source": "browser"}
                         for item in inputs
                     )
-                # Breadth-first harvest of same-origin links from the fully rendered DOM,
-                # following them several levels deep so pages reachable only after JavaScript
-                # runs - and only after login (menus, orders, detail pages) - enter the crawl
-                # surface too. Deeper coverage is favoured over speed here. We only navigate
-                # and read links/endpoints; no input is touched, so no fragile DOM interaction.
+
+                # Duyệt theo chiều rộng các liên kết cùng origin từ DOM đã render đầy đủ,
+                # theo nhiều cấp để cả những trang chỉ xuất hiện sau khi chạy JavaScript -
+                # và chỉ sau đăng nhập (menu, đơn hàng, trang chi tiết) - cũng vào được bề
+                # mặt crawl. Ưu tiên độ phủ sâu hơn tốc độ. Chỉ điều hướng và đọc
+                # liên kết/endpoint; không đụng ô nhập nào.
                 link_filter_js = (
                     """elements => elements.map(element => element.href).filter(href => {
                         try {
@@ -410,8 +482,8 @@ class WebTools:
                     })"""
                 )
                 known_urls = {entry["url"] for entry in pages}
-                # Visit at most one URL per distinct path+fragment; testing one instance of
-                # a parameterised page (e.g. one detail?id=) is enough and keeps it bounded.
+                # Mỗi cặp path+fragment chỉ thăm một lần; test một thực thể của trang có
+                # tham số (vd một detail?id=) là đủ và giữ cho crawl có giới hạn.
                 seen_keys = set()
                 for entry in pages:
                     pe = urlparse(entry.get("url", ""))
@@ -450,8 +522,8 @@ class WebTools:
                     if route_params:
                         route_endpoints.append({"url": route.split("?", 1)[0], "method": "GET",
                                                 "parameters": sorted(set(route_params)), "source": "browser-link"})
-                    # Fetch server-rendered HTML routes over HTTP to mine forms/scripts for
-                    # API endpoints (e.g. a change-password JSON API) that no request revealed.
+                    # Tải các route HTML server-rendered qua HTTP để khai thác form/script
+                    # tìm endpoint API (vd API đổi mật khẩu) mà không request nào lộ ra.
                     last_seg = parsed_route.path.rsplit("/", 1)[-1]
                     looks_html = parsed_route.path.lower().endswith((".jsp", ".html", ".htm", ".php")) or "." not in last_seg
                     if looks_html:
@@ -509,13 +581,13 @@ class WebTools:
                     continue
 
     def _credential_json_endpoints(self, url: str, html: str) -> list[dict]:
-        """Discover a credential-change JSON API without submitting the form.
+        """Phát hiện API JSON đổi mật khẩu mà không cần submit form.
 
-        Many apps render a change-password form in the page HTML while the actual
-        request is a JSON fetch to an /api/...password endpoint declared in the page
-        scripts. When a form with a password field coexists with such a path, register
-        that path as a JSON endpoint whose fields are the form's input names, so the
-        attack stage can probe it. The oracle still decides any finding.
+        Nhiều ứng dụng hiển thị form đổi mật khẩu trong HTML trong khi request thật
+        là một fetch JSON tới endpoint .../password khai báo trong script. Khi có form
+        chứa trường password cùng tồn tại với một đường dẫn như vậy, đăng ký đường dẫn
+        đó như một endpoint JSON với các trường là tên input của form, để khâu tấn công
+        thăm dò. Oracle vẫn quyết định mọi phát hiện.
         """
         endpoints: list[dict] = []
         try:
@@ -523,8 +595,8 @@ class WebTools:
         except Exception:  # noqa: BLE001
             return endpoints
         script_text = " ".join(script.get_text() for script in soup.find_all("script"))
-        # Match an /api or /auth path anywhere, including inside template literals
-        # such as `${contextPath}/api/profile/password`, not only quoted string literals.
+        # Bắt đường dẫn /api hoặc /auth ở bất kỳ đâu, kể cả trong template literal như
+        # `${contextPath}/api/profile/password`, không chỉ chuỗi literal trong nháy.
         api_paths = re.findall(r"(/(?:api|auth)/[A-Za-z0-9_][A-Za-z0-9_./-]*)", script_text)
         pwd_api = next((p for p in api_paths if "password" in p.lower()), None)
         if not pwd_api:
@@ -540,6 +612,7 @@ class WebTools:
 
     @staticmethod
     def _merge_endpoints(existing: list[dict], discovered: list[dict]) -> list[dict]:
+        """Gộp hai danh sách endpoint theo khóa (method, url), hợp nhất parameters/json_fields."""
         merged = {(item["method"], item["url"]): item for item in existing}
         for item in discovered:
             key = (item["method"], item["url"])
@@ -552,6 +625,12 @@ class WebTools:
         return list(merged.values())
 
     def browser_request(self, form: dict, field: str, payload: str) -> dict:
+        """Gửi payload vào một ô nhập của form SPA bằng Chromium rồi trả DOM đã render.
+
+        Dùng cho form chỉ hoạt động khi JavaScript chạy. Điền ``payload`` vào ô
+        ``field``, nhấn Enter và trả về nội dung trang (kiểu text/html) để oracle XSS
+        tất định (yêu cầu ngữ cảnh HTML) có thể chạy trên đó.
+        """
         from playwright.sync_api import sync_playwright
 
         with playwright_event_loop_policy(), sync_playwright() as playwright:
@@ -574,17 +653,22 @@ class WebTools:
             input_locator.fill(payload)
             input_locator.press("Enter")
             page.wait_for_timeout(500)
-            # page.content() is the rendered DOM (HTML); advertise the type so the
-            # deterministic XSS oracle, which requires an HTML context, can run on it.
+            # page.content() là DOM đã render (HTML); khai báo đúng kiểu để oracle XSS
+            # tất định (vốn cần ngữ cảnh HTML) chạy được trên đó.
             result = {"url": page.url, "status": 200, "headers": {"content-type": "text/html"}, "body": page.content()[:12000]}
             context.close()
             browser.close()
             return result
 
     def request(self, url: str, method: str = "GET", params: dict | None = None, data=None, headers: dict | None = None, json_body=None, follow_redirects: bool | None = None) -> dict:
+        """Gửi một yêu cầu HTTP có kiểm soát phạm vi và ghi nhật ký; trả về dict phản hồi.
+
+        Ghi lại các đối số thực sự gửi đi (kể cả payload) để báo cáo chứng minh chính
+        xác những gì đã gửi, không chỉ nêu kết luận. Trả về dict gồm url, status,
+        headers, body (đã cắt bớt; giữ dài hơn cho phản hồi JSON).
+        """
         self._guard_request(httpx.Request(method, url))
-        # Record the actual outgoing arguments (including any payload) so the report can
-        # prove exactly what was sent, not merely state a conclusion.
+        # Dựng chuỗi mô tả đối số gửi đi (phục vụ nhật ký/bằng chứng).
         parts = []
         for src in (params, data, json_body):
             if isinstance(src, dict):
@@ -598,11 +682,12 @@ class WebTools:
             self._log_request(method, url, args, 0)
             return {"url": url, "status": 0, "headers": {}, "body": "", "error": str(exc)}
         self._log_request(method, str(response.url), args, response.status_code)
-        # Keep structured API responses parseable when a probe returns many products.
+        # Giữ phản hồi API có cấu trúc đọc được khi một probe trả về nhiều sản phẩm.
         limit = 1_000_000 if "json" in response.headers.get("content-type", "") else 12000
         return {"url": str(response.url), "status": response.status_code, "headers": dict(response.headers), "body": response.text[:limit]}
 
     def _log_request(self, method: str, url: str, args: str, status: int) -> None:
+        """Ghi một dòng nhật ký yêu cầu vào bộ đệm riêng, LIVE_LOG và console (giới hạn 500 dòng)."""
         if not hasattr(self, "request_log"):
             self.request_log = []
         if len(self.request_log) < 500:

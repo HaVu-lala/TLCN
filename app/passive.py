@@ -1,31 +1,30 @@
-"""Passive, non-destructive detectors for OWASP Top 10:2025 signals that are
-observable directly in an HTTP response, without sending any attack payload.
+"""Bộ dò THỤ ĐỘNG cho các dấu hiệu OWASP Top 10:2025 quan sát trực tiếp trong phản hồi HTTP.
 
-Covered categories:
-  * A02:2025 - Security Misconfiguration (missing security headers, leaked stack traces)
-  * A03:2025 - Software Supply Chain / component version disclosure
-  * A04:2025 - Cryptographic Failures (insecure cookies, missing transport hardening)
+"Thụ động" nghĩa là chỉ ĐỌC metadata và nội dung máy chủ đã trả về, không gửi bất
+kỳ payload tấn công nào, nên không thêm lưu lượng phá hoại và không thể thay đổi
+trạng thái mục tiêu. Các nhóm được phủ:
 
-These checks only read response metadata and body text that the server already
-returned, so they add no destructive traffic and cannot alter target state.
+  * A02:2025 - Security Misconfiguration (thiếu security header, lộ stack trace)
+  * A03:2025 - Software Supply Chain (lộ phiên bản thành phần qua header)
+  * A04:2025 - Cryptographic Failures (cookie thiếu cờ an toàn, thiếu HSTS)
 """
 import re
 from urllib.parse import urlparse
 
 from app.schemas import Finding
 
-# Response security headers expected on an HTML document.
+# Các security header kỳ vọng có trên một tài liệu HTML.
 EXPECTED_SECURITY_HEADERS = {
     "content-security-policy": "Content-Security-Policy",
     "x-frame-options": "X-Frame-Options",
     "x-content-type-options": "X-Content-Type-Options",
 }
 
-# Headers that commonly disclose a concrete component version (A03 cross-check with CVEs).
+# Các header thường lộ phiên bản thành phần cụ thể (A03, để đối chiếu CVE).
 VERSION_HEADERS = ("server", "x-powered-by", "x-aspnet-version", "x-aspnetmvc-version", "x-generator")
 VERSION_VALUE = re.compile(r"\d+\.\d+")
 
-# Server-side error disclosure signatures (A02: debug / stack trace leakage).
+# Chữ ký lộ lỗi phía máy chủ (A02: lộ debug / stack trace).
 STACK_TRACE = re.compile(
     r"(Traceback \(most recent call last\)|java\.lang\.[A-Za-z.]+Exception"
     r"|at [\w.$]+\([\w.]+\.(?:java|py|rb|php):\d+\)|Warning: .+ on line \d+"
@@ -35,11 +34,12 @@ STACK_TRACE = re.compile(
 
 
 def _headers_lower(headers: dict | None) -> dict[str, str]:
+    """Chuẩn hóa dict header về khóa viết thường, giá trị chuỗi."""
     return {str(key).lower(): str(value) for key, value in (headers or {}).items()}
 
 
 def _target_page(pages: list[dict], target_url: str | None) -> dict | None:
-    """Analyse the target root response only, to keep passive findings bounded."""
+    """Chọn trang gốc mục tiêu (ưu tiên đúng path, trả 200) để giữ phạm vi thụ động gọn."""
     if target_url:
         target_path = urlparse(target_url).path.rstrip("/") or "/"
         for page in pages:
@@ -49,11 +49,13 @@ def _target_page(pages: list[dict], target_url: str | None) -> dict | None:
 
 
 def _is_html(headers: dict[str, str], page: dict) -> bool:
+    """True nếu phản hồi là HTML (dựa content-type của header hoặc của trang)."""
     content_type = headers.get("content-type", page.get("content_type", ""))
     return "html" in content_type.lower()
 
 
 def _a02(url: str, headers: dict[str, str], body: str, is_html: bool) -> list[Finding]:
+    """A02: báo thiếu security header (chỉ với HTML) và lộ stack trace trong thân phản hồi."""
     findings: list[Finding] = []
     if is_html:
         missing = [label for key, label in EXPECTED_SECURITY_HEADERS.items() if key not in headers]
@@ -74,6 +76,7 @@ def _a02(url: str, headers: dict[str, str], body: str, is_html: bool) -> list[Fi
 
 
 def _a03(url: str, headers: dict[str, str]) -> list[Finding]:
+    """A03: báo khi header lộ phiên bản thành phần (có thể tra cứu CVE)."""
     disclosed = [f"{header}: {headers[header]}" for header in VERSION_HEADERS
                  if header in headers and VERSION_VALUE.search(headers[header])]
     if not disclosed:
@@ -86,6 +89,7 @@ def _a03(url: str, headers: dict[str, str]) -> list[Finding]:
 
 
 def _a04(url: str, headers: dict[str, str]) -> list[Finding]:
+    """A04: báo cookie thiếu HttpOnly/Secure/SameSite và phản hồi HTTPS thiếu HSTS."""
     findings: list[Finding] = []
     scheme = urlparse(url).scheme
     raw_cookie = headers.get("set-cookie", "")
@@ -110,6 +114,7 @@ def _a04(url: str, headers: dict[str, str]) -> list[Finding]:
 
 
 def _dedup(findings: list[Finding]) -> list[Finding]:
+    """Khử trùng lặp theo (category, url, parameter), giữ bản gặp đầu tiên."""
     unique: dict[tuple, Finding] = {}
     for finding in findings:
         unique.setdefault((finding.category, finding.url, finding.parameter), finding)
@@ -158,10 +163,10 @@ def a04_findings(pages: list[dict], target_url: str | None = None) -> list[Findi
 
 # [TN4 - Kiểm thụ động] Gộp A02 (misconfig/header) + A03 (lộ phiên bản) + A04 (cookie/HSTS); chỉ đọc phản hồi, mỗi nhóm một Finding riêng.
 def passive_findings(pages: list[dict], target_url: str | None = None) -> list[Finding]:
-    """Return deduplicated passive findings for the target root response.
+    """Trả về các phát hiện thụ động (A02+A03+A04) đã khử trùng cho trang gốc mục tiêu.
 
-    Giữ lại như API gộp (A02+A03+A04) cho kiểm thử; mỗi nhóm giờ là một hàm riêng
-    để ánh xạ đúng một kịch bản (TN4/TN5/TN6).
+    Giữ lại như API gộp cho kiểm thử; mỗi nhóm đã tách thành một hàm riêng để ánh xạ
+    đúng một kịch bản (TN4/TN5/TN6).
     """
     return _dedup(
         a02_findings(pages, target_url)

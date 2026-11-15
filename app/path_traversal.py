@@ -33,6 +33,7 @@ def _companions(form: dict, exclude: str) -> dict:
 
 
 def _candidates(pages: list[dict]) -> list[tuple[str, str, str, dict]]:
+    """Thu các (url, tham_số, method, companions) có tên giống tên tệp/đường dẫn."""
     raw: list[tuple[str, str, str, dict]] = []
     for page in pages:
         for endpoint in page.get("endpoints", []):
@@ -67,6 +68,7 @@ def _candidates(pages: list[dict]) -> list[tuple[str, str, str, dict]]:
 
 # [TN10 - Path Traversal] Tiêm chuỗi duyệt ngược vào tham số tên tệp, oracle kiểm chữ ký /etc/passwd.
 def check_path_traversal(tools, pages: list[dict]) -> list[Finding]:
+    """Thử Path Traversal trên tham số tên tệp; công nhận khi phản hồi tiêm lộ /etc/passwd còn baseline thì không."""
     findings: list[Finding] = []
     seen: set[tuple] = set()
     for url, param, method, companions in _candidates(pages):

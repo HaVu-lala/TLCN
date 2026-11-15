@@ -11,9 +11,11 @@ from app.path_traversal import check_path_traversal
 
 @register("Path Traversal (active, /etc/passwd oracle)")
 def path_traversal(ctx: DetectorContext):
+    """Path Traversal tổng quát: tiêm chuỗi duyệt ngược, oracle kiểm chữ ký /etc/passwd."""
     return check_path_traversal(ctx.tools, ctx.pages)
 
 
 @register("Path Traversal (lab-pinned)")
 def path_traversal_lab(ctx: DetectorContext):
+    """Path Traversal ghim theo lab (Juice Shop /ftp vượt lọc bằng null-byte, WebGoat profile-upload)."""
     return lab_path_traversal_checks(ctx.tools, ctx.pages)

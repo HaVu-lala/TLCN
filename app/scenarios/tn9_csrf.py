@@ -10,4 +10,5 @@ from app.detectors import DetectorContext, register
 
 @register("Potential CSRF (heuristic, low confidence)")
 def csrf(ctx: DetectorContext):
+    """Heuristic CSRF: form POST thiếu token chống CSRF -> Potential CSRF (nghi ngờ)."""
     return check_csrf(ctx.tools, ctx.pages)

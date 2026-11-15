@@ -65,6 +65,7 @@ def _candidates(pages: list[dict]) -> list[tuple[str, str, str, dict]]:
 
 # [TN8 - Open Redirect] Tiêm URL ngoài vào tham số đích, kết luận qua header Location 3xx.
 def check_open_redirect(tools, pages: list[dict]) -> list[Finding]:
+    """Thử Open Redirect trên mọi tham số giống đích chuyển hướng; kết luận bằng header Location 3xx."""
     findings: list[Finding] = []
     seen: set[tuple] = set()
     for url, param, method, companions in _candidates(pages):

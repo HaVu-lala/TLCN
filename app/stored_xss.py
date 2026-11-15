@@ -43,6 +43,11 @@ SKIP_INPUT_TYPES = {
 
 # [TN2 - XSS] Stored XSS hộp đen tổng quát: seed payload rồi đọc lại ở request độc lập (chỉ chạy khi aggressive_scan).
 def stored_xss_blackbox(tools, pages: list[dict]) -> list[Finding]:
+    """Oracle gieo-dấu-rồi-xem-lại: gieo marker vào mọi ô nhập rồi mở lại trang bắt marker tự nổ alert.
+
+    Chỉ chạy ở chế độ chủ động (``aggressive_scan``) vì bước gieo có ghi dữ liệu.
+    Trả về danh sách Stored XSS đã xác nhận bằng thực thi trình duyệt.
+    """
     if not settings.aggressive_scan or not settings.browser_scan_enabled:
         return []
     try:

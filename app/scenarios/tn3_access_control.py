@@ -12,11 +12,13 @@ from app.detectors import DetectorContext, register
 
 @register("A01 broken access control (forced browsing)")
 def forced_browsing(ctx: DetectorContext):
+    """Forced-browsing các endpoint quản trị bằng phiên hiện tại (A01, cấp chức năng)."""
     return check_access_control(ctx.tools, ctx.pages)
 
 
 @register("A01 BOLA/IDOR (two sessions)")
 def bola_two_session(ctx: DetectorContext):
+    """BOLA/IDOR hai phiên: đọc cùng một đối tượng bằng hai danh tính rồi để oracle kết luận."""
     if not ctx.comparison_tools:
         return []
     # Import trễ để tránh vòng import với app.agent.

@@ -22,12 +22,14 @@ ERROR_TOKENS = ("unauthorized", "forbidden", "access denied", "please log in",
 
 
 def _origin(url: str) -> str:
+    """Trả về origin (scheme://host:port) của một URL."""
     p = urlparse(url)
     return f"{p.scheme}://{p.netloc}"
 
 
 # [TN3 - A01 Broken Access Control] BFLA: forced-browsing các endpoint quản trị bằng phiên hiện tại (vd /api/admin/*).
 def check_access_control(tools, pages: list[dict]) -> list[Finding]:
+    """Forced-browse các endpoint quản trị bằng phiên hiện tại; báo khi trả 200 kèm JSON thật (thiếu kiểm quyền)."""
     base = _origin(tools.target_url)
     candidates = list(PRIVILEGED_PATHS)
     # Bổ sung các endpoint quản trị phát hiện được trong quá trình thu thập.

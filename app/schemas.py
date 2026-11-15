@@ -1,3 +1,11 @@
+"""Mô hình dữ liệu (pydantic) dùng chung cho toàn hệ thống.
+
+Đây là "hợp đồng dữ liệu" giữa các thành phần: yêu cầu quét đầu vào
+(:class:`ScanRequest`), một lỗ hổng đã xác nhận (:class:`Finding`), một bước trong
+nhật ký điều phối (:class:`AgentTrace`) và kết quả quét hoàn chỉnh trả cho giao
+diện (:class:`ScanResult`). Các chuỗi ``category``/``severity`` trong Finding được
+báo cáo tiếng Việt và phần đánh giá dùng để phân loại, nên giữ nguyên để không vỡ.
+"""
 from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -5,12 +13,14 @@ from pydantic import BaseModel, Field, HttpUrl
 
 
 class LoginRequest(BaseModel):
+    """Thông tin đăng nhập hợp pháp (tùy chọn) để tạo phiên quét có xác thực."""
     login_url: HttpUrl
     username: str
     password: str
 
 
 class ScanRequest(BaseModel):
+    """Tham số một yêu cầu quét gửi tới ``POST /api/scans``."""
     target_url: HttpUrl
     authorized: bool = Field(description="Explicit confirmation that the target is an authorized lab")
     session_headers: dict[str, str] = Field(default_factory=dict, description="Optional lab session headers, such as Cookie or Authorization")
@@ -19,6 +29,11 @@ class ScanRequest(BaseModel):
 
 
 class Finding(BaseModel):
+    """Một lỗ hổng đã được oracle xác nhận (không phải phán đoán của AI).
+
+    ``evidence`` là bằng chứng rút ra từ phản hồi thực tế của máy chủ;
+    ``recommendation`` là khuyến nghị khắc phục.
+    """
     category: str
     severity: Literal["info", "low", "medium", "high"]
     url: str
@@ -27,18 +42,23 @@ class Finding(BaseModel):
     recommendation: str
 
 
+# Thứ hạng mức độ nghiêm trọng, dùng khi khử trùng lặp để giữ bản nặng nhất.
 SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3}
 
 
 def _vulnerability_url(finding: Finding) -> str:
-    """Finding URL without the tested parameter, whose value is a per-probe payload."""
+    """URL của lỗ hổng sau khi bỏ tham số đang kiểm (giá trị tham số là payload từng lần).
+
+    Nhờ loại bỏ tham số đã test, hai phát hiện trên cùng một điểm yếu nhưng khác
+    giá trị payload sẽ cùng một khóa khi khử trùng lặp.
+    """
     parts = urlsplit(finding.url)
     query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != finding.parameter]
     return parts._replace(query=urlencode(query)).geturl()
 
 
 def dedupe_findings(findings: list[Finding]) -> list[Finding]:
-    """Keep one finding per vulnerable point: highest severity, then the latest (lab-pinned) one."""
+    """Gộp mỗi điểm yếu về một phát hiện: ưu tiên mức nặng nhất, rồi bản mới nhất (ghim theo lab)."""
     unique: dict[tuple, Finding] = {}
     for finding in findings:
         key = (finding.category, _vulnerability_url(finding), finding.parameter)
@@ -49,6 +69,11 @@ def dedupe_findings(findings: list[Finding]) -> list[Finding]:
 
 
 class AgentTrace(BaseModel):
+    """Một dòng nhật ký điều phối: thành phần nào đã chạy, trạng thái và chi tiết.
+
+    Các trường ``llm_*`` ghi lại việc dùng mô hình ngôn ngữ (số lần gọi, token, độ
+    trễ, chi phí) để báo cáo chứng minh "có dùng AI thật".
+    """
     agent: str
     status: Literal["completed", "skipped", "fallback"]
     detail: str
@@ -63,6 +88,7 @@ class AgentTrace(BaseModel):
 
 
 class ScanResult(BaseModel):
+    """Kết quả hoàn chỉnh của một phiên quét, lưu lại và trả cho giao diện/báo cáo."""
     scan_id: str
     target_url: str
     pages: list[dict[str, Any]]

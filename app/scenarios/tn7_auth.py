@@ -13,9 +13,11 @@ from app.labs import lab_auth_failure_checks
 
 @register("A07 authentication weaknesses")
 def authentication(ctx: DetectorContext):
+    """A07 trên form login tổng quát: credential mặc định + loạt đăng nhập sai (kiểm khóa)."""
     return check_authentication(ctx.tools, ctx.pages)
 
 
 @register("A07 authentication failures (lab)")
 def authentication_lab(ctx: DetectorContext):
+    """A07 ghim theo lab: đăng nhập sai liên tiếp ở REST/login không bị khóa."""
     return lab_auth_failure_checks(ctx.tools, ctx.pages)

@@ -1,3 +1,10 @@
+"""Ứng dụng FastAPI: API quét, trang báo cáo và các fixture lab nội bộ (/demo, /demo-safe).
+
+Đây là điểm vào của hệ thống. Ngoài API quét chính (``POST /api/scans``) và các
+trang báo cáo (JSON/HTML/Markdown/tiếng Việt), module còn tự host hai fixture lab
+cục bộ để demo ngoại tuyến: ``/demo`` (cố ý có lỗ hổng) và ``/demo-safe`` (đã vá),
+dùng làm mẫu dương/âm khi đánh giá độ chính xác của Agent.
+"""
 from pathlib import Path
 from time import perf_counter
 from html import escape
@@ -18,13 +25,14 @@ app = FastAPI(title="Sentinel Web Pentest Agent", version="0.1.0")
 static_dir = Path(__file__).parent / "static"
 scan_repository = ScanRepository()
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Trạng thái trong-bộ-nhớ cho các fixture demo (ghi chú đã lưu, số lần đăng nhập sai).
 demo_notes: list[str] = []
 safe_notes: list[str] = []
 safe_login_failures = {"count": 0}
 
-# A02/A03/A04 fixture headers. The vulnerable fixture omits security headers,
-# discloses component versions and sets an insecure cookie; the safe fixture
-# hardens all three.
+# Header cho fixture A02/A03/A04. Fixture có-lỗ bỏ qua security header, lộ phiên bản
+# thành phần và đặt cookie không an toàn; fixture an toàn siết chặt cả ba.
 INSECURE_HEADERS = {
     "Server": "Werkzeug/2.0.3 Python/3.12.1",
     "X-Powered-By": "Express/4.17.1",
@@ -42,7 +50,7 @@ LOGIN_FORM = "<form method='post' action='{action}'><label>User <input name='use
 
 
 async def _read_credentials(request: Request) -> dict[str, str]:
-    """Parse credentials from query, urlencoded body or JSON without requiring python-multipart."""
+    """Đọc thông tin đăng nhập từ query, body urlencoded hoặc JSON (không cần python-multipart)."""
     values: dict[str, str] = {key: val[-1] for key, val in parse_qs(request.url.query).items()}
     body = (await request.body()).decode("utf-8", "ignore")
     if body:
@@ -60,16 +68,19 @@ async def _read_credentials(request: Request) -> dict[str, str]:
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
+    """Trang chủ: trả về giao diện tĩnh index.html."""
     return FileResponse(static_dir / "index.html")
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
+    """Kiểm tra sức khỏe dịch vụ (health check)."""
     return {"status": "ok", "service": "sentinel-agent"}
 
 
 @app.get("/api/scans")
 def list_scans() -> list[dict[str, object]]:
+    """Liệt kê tóm tắt mọi lần quét đã lưu (mục tiêu, số phát hiện, thời gian, F1...)."""
     return [
         {
             "scan_id": result.scan_id,
@@ -86,6 +97,7 @@ def list_scans() -> list[dict[str, object]]:
 
 @app.get("/api/scans/{scan_id}/report")
 def download_report(scan_id: str) -> JSONResponse:
+    """Tải báo cáo JSON đầy đủ của một lần quét (dạng tệp đính kèm)."""
     result = scan_repository.get(scan_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -94,6 +106,7 @@ def download_report(scan_id: str) -> JSONResponse:
 
 @app.get("/api/scans/{scan_id}/report.html", response_class=HTMLResponse)
 def html_report(scan_id: str) -> str:
+    """Báo cáo HTML (tiếng Anh) dạng bảng cho một lần quét; mọi nội dung đều được escape."""
     result = scan_repository.get(scan_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -110,12 +123,14 @@ def html_report(scan_id: str) -> str:
 
 @app.get("/lich-su.html", response_class=HTMLResponse)
 def history_vi() -> str:
+    """Trang lịch sử quét bằng tiếng Việt (bảng liệt kê mọi lần quét kèm link báo cáo)."""
     from app.report_vi import render_history_vi
     return render_history_vi(scan_repository.list())
 
 
 @app.get("/api/scans/{scan_id}/report.vi.html", response_class=HTMLResponse)
 def vietnamese_report(scan_id: str) -> str:
+    """Báo cáo kiểm thử bằng tiếng Việt, chuyên nghiệp, dễ hiểu cho cả người ngoài ngành."""
     from app.report_vi import render_vietnamese_report
     result = scan_repository.get(scan_id)
     if result is None:
@@ -125,11 +140,12 @@ def vietnamese_report(scan_id: str) -> str:
 
 @app.get("/api/scans/{scan_id}/report.md")
 def markdown_report(scan_id: str):
+    """Báo cáo Markdown cho một lần quét (tệp đính kèm); nội dung không tin cậy được escape."""
     from fastapi.responses import Response
     result = scan_repository.get(scan_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    # HTML-escape untrusted content so opening the Markdown as HTML cannot execute evidence.
+    # Escape nội dung không tin cậy để nếu mở Markdown như HTML cũng không chạy được bằng chứng.
     lines = ["# Sentinel Security Report", "", f"Target: {escape(result.target_url)}", "",
              f"Duration: {result.duration_ms} ms", "", escape(result.agent_summary), ""]
     for item in result.findings:
@@ -143,11 +159,11 @@ def markdown_report(scan_id: str):
 
 @app.get("/demo", response_class=HTMLResponse)
 def demo_lab(q: str = "") -> HTMLResponse:
-    """Intentionally vulnerable local fixture for offline demonstrations.
+    """Fixture lab CỐ Ý CÓ LỖ HỔNG để demo ngoại tuyến.
 
-    Besides the reflected/stored/SQLi/BOLA cases, this response intentionally
-    omits security headers (A02), discloses component versions (A03) and sets an
-    insecure cookie (A04), and exposes a weak login form (A07 via /demo/login).
+    Ngoài các ca reflected/stored XSS/SQLi/BOLA, phản hồi này cố ý bỏ security header
+    (A02), lộ phiên bản thành phần (A03), đặt cookie không an toàn (A04), và phơi một
+    form đăng nhập yếu (A07 qua /demo/login).
     """
     database_message = "SQL syntax error near input" if "'" in q else "No matching record."
     login_form = LOGIN_FORM.format(action="/demo/login")
@@ -162,7 +178,7 @@ def demo_lab(q: str = "") -> HTMLResponse:
 
 @app.post("/demo/login")
 async def demo_login(request: Request) -> JSONResponse:
-    """Weak authentication fixture: default credentials accepted, no lockout (A07)."""
+    """Fixture xác thực yếu: chấp nhận credential mặc định, không khóa tài khoản (A07)."""
     creds = await _read_credentials(request)
     if creds.get("username") == "admin" and creds.get("password") == "admin":
         return JSONResponse({"status": "ok", "token": "demo-session-token"})
@@ -171,7 +187,7 @@ async def demo_login(request: Request) -> JSONResponse:
 
 @app.get("/demo/notes", response_class=HTMLResponse)
 def demo_notes_lab(note: str = "") -> str:
-    """Intentionally vulnerable stored-XSS fixture for offline demonstrations."""
+    """Fixture cố ý có Stored XSS để demo ngoại tuyến (lưu ghi chú rồi hiển thị lại không lọc)."""
     if note:
         demo_notes.append(note)
     rendered_notes = "".join(f"<li>{item}</li>" for item in demo_notes)
@@ -180,7 +196,7 @@ def demo_notes_lab(note: str = "") -> str:
 
 @app.get("/demo/object", response_class=HTMLResponse)
 def demo_object(object_id: str = Query("1", alias="id")) -> str:
-    """Intentionally vulnerable object endpoint for two-session BOLA demonstrations."""
+    """Fixture endpoint đối tượng cố ý có lỗ hổng để demo BOLA hai phiên."""
     objects = {"1": ("user-1", "Project Alpha"), "2": ("user-2", "Project Beta")}
     owner, project = objects.get(object_id, ("user-2", "Unknown project"))
     return f"<html><body><h1>Object {escape(object_id)}</h1><p>Owner: {owner}</p><p>Secret project data for {escape(project)}</p></body></html>"
@@ -188,6 +204,7 @@ def demo_object(object_id: str = Query("1", alias="id")) -> str:
 
 @app.get("/demo-safe", response_class=HTMLResponse)
 def safe_demo(q: str = "") -> HTMLResponse:
+    """Fixture lab ĐÃ VÁ (mẫu âm): escape đầu ra, có đủ security header an toàn."""
     login_form = LOGIN_FORM.format(action="/demo-safe/login")
     body = f"""<html><head><title>Sentinel Safe Demo Lab</title></head><body>
     <form method='get' action='/demo-safe'><input name='q' value='{escape(q, quote=True)}'><button>Search</button></form>
@@ -199,7 +216,7 @@ def safe_demo(q: str = "") -> HTMLResponse:
 
 @app.post("/demo-safe/login")
 async def safe_login(request: Request) -> JSONResponse:
-    """Hardened authentication fixture: rejects default credentials and locks out after repeated failures (A07 negative)."""
+    """Fixture xác thực đã siết: từ chối credential mặc định và khóa sau nhiều lần sai (A07 âm)."""
     creds = await _read_credentials(request)
     if safe_login_failures["count"] >= 3:
         return JSONResponse({"status": "locked", "detail": "too many attempts, try again later"}, status_code=429)
@@ -212,6 +229,7 @@ async def safe_login(request: Request) -> JSONResponse:
 
 @app.get("/demo-safe/notes", response_class=HTMLResponse)
 def safe_notes_lab(note: str = "") -> str:
+    """Fixture ghi chú an toàn: escape nội dung trước khi hiển thị (mẫu âm cho Stored XSS)."""
     if note:
         safe_notes.append(note)
     return "<html><body><ul>" + "".join(f"<li>{escape(item)}</li>" for item in safe_notes) + "</ul></body></html>"
@@ -219,6 +237,7 @@ def safe_notes_lab(note: str = "") -> str:
 
 @app.get("/demo-safe/object", response_class=HTMLResponse)
 def safe_object(object_id: str = Query("1", alias="id"), x_lab_user: str | None = Header(default=None)) -> str:
+    """Fixture đối tượng an toàn: kiểm tra quyền sở hữu qua header X-Lab-User (mẫu âm cho BOLA)."""
     owner = {"1": "user-1", "2": "user-2"}.get(object_id)
     if owner is None:
         raise HTTPException(status_code=404, detail="Object not found")
@@ -235,6 +254,11 @@ def live_log(after: int = 0) -> dict:
 
 @app.post("/api/scans", response_model=ScanResult)
 def create_scan(request: ScanRequest) -> ScanResult:
+    """Tạo và chạy một lần quét: kiểm phạm vi, chạy Agent, chấm điểm, lưu và trả kết quả.
+
+    Luôn đóng client HTTP trong khối ``finally`` để không rò kết nối. Sau khi quét,
+    chấm điểm theo đúng loại mục tiêu: fixture demo, lab ghim sẵn, và tập mở rộng.
+    """
     try:
         target = validate_target(str(request.target_url), request.authorized)
     except ScopeError as exc:

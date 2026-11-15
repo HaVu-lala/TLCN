@@ -1,4 +1,10 @@
-"""Scenario-level metrics for identified Sentinel fixtures, not arbitrary URLs."""
+"""Chấm điểm theo kịch bản cho các fixture Sentinel đã nhận diện (không phải URL bất kỳ).
+
+So khớp phát hiện của Agent với "ground truth" khai báo trong docs/ground_truth.json để
+tính Precision/Recall/F1 và tỉ lệ báo động giả (FPR). Có ba bộ chấm riêng biệt để không
+ảnh hưởng lẫn nhau: fixture demo nội bộ (:func:`evaluate_demo`), lab Docker ghim sẵn
+(:func:`evaluate_lab`) và các nhóm OWASP mở rộng (:func:`evaluate_extended`).
+"""
 from urllib.parse import urlparse
 import json
 from pathlib import Path
@@ -7,27 +13,29 @@ MANIFEST = json.loads((Path(__file__).resolve().parents[1] / "docs" / "ground_tr
 
 CATEGORIES = ("Reflected XSS", "Stored XSS", "Potential SQL Injection", "Potential BOLA/IDOR")
 
-# OWASP Top 10:2025 categories added on top of the four core injection/access cases.
-# Scored separately so they never disturb the core benchmark above.
+# Các nhóm OWASP Top 10:2025 bổ sung bên cạnh bốn ca lõi (tiêm nhiễm/phân quyền).
+# Được chấm riêng để không ảnh hưởng tới benchmark lõi ở trên.
 EXTENDED_CATEGORIES = ("Security Misconfiguration", "Software Supply Chain Exposure",
                        "Cryptographic Failures", "Authentication Failures")
 
 
 def _under_route(path: str, route: str) -> bool:
-    """True when path is route itself or below it, never a sibling sharing its prefix."""
+    """True khi path chính là route hoặc nằm dưới route, không tính route anh em cùng tiền tố."""
     path, route = path.rstrip("/"), route.rstrip("/")
     return path == route or path.startswith(route + "/")
 
 
 def _matches_route(url: str, route: str) -> bool:
+    """True khi URL khớp route; route SPA (có '#') so khớp cả phần fragment."""
     parsed = urlparse(url)
     if "#" not in route:
         return _under_route(parsed.path, route)
-    # SPA routes such as /#/search live in the fragment, which parsed.path drops.
+    # Route SPA như /#/search nằm trong fragment, mà parsed.path bỏ đi.
     return _under_route(f"{parsed.path or '/'}#{parsed.fragment.split('?')[0]}", route)
 
 
 def metrics(tp: int, fp: int, fn: int, tn: int) -> dict:
+    """Tính các chỉ số từ 4 số đếm: precision, recall, F1 và tỉ lệ báo động giả (FPR)."""
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
     return {
@@ -39,6 +47,7 @@ def metrics(tp: int, fp: int, fn: int, tn: int) -> dict:
 
 
 def evaluate_demo(target: str, pages: list[dict], findings: list) -> dict:
+    """Chấm điểm cho fixture demo nội bộ (/demo dương, /demo-safe âm) theo category+route+parameter."""
     path = urlparse(target).path
     fixture = next((f for f in MANIFEST["fixtures"] if f.get("target_path") == path and f.get("fixture_id") and f.get("ground_truth_available")), None)
     identity = fixture["fixture_id"] if fixture else None
@@ -56,12 +65,12 @@ def evaluate_demo(target: str, pages: list[dict], findings: list) -> dict:
         scenarios.append({"category": category, "expected_positive": positive, "detected": detected,
                           "outcome": ("TP" if detected else "FN") if positive else ("FP" if detected else "TN")})
     outcomes = [s["outcome"] for s in scenarios]
-    # Only unmatched findings within the four scored categories count as false positives.
-    # Findings from other OWASP categories are evaluated separately by evaluate_extended.
+    # Chỉ các phát hiện chưa khớp TRONG bốn category được chấm mới tính là báo động giả.
+    # Phát hiện thuộc nhóm OWASP khác được evaluate_extended chấm riêng.
     core_indices = {i for i, f in enumerate(findings) if f.category in CATEGORIES}
     unexpected = len(core_indices - matched)
     result = metrics(outcomes.count("TP"), outcomes.count("FP") + unexpected, outcomes.count("FN"), outcomes.count("TN"))
-    # Extra findings are unmatched claims; they are not negative test cases for FPR.
+    # Phát hiện dư là tuyên bố chưa khớp; chúng không phải ca test âm nên không tính vào FPR.
     negative_count = outcomes.count("FP") + outcomes.count("TN")
     result["fpr_available"] = bool(negative_count)
     result["false_positive_rate"] = outcomes.count("FP") / negative_count if negative_count else None
@@ -71,11 +80,11 @@ def evaluate_demo(target: str, pages: list[dict], findings: list) -> dict:
 
 
 def evaluate_lab(target: str, pages: list[dict], findings: list) -> dict:
-    """Scenario-level metrics for pinned Docker labs using explicit route/parameter oracles.
+    """Chấm điểm cho lab Docker ghim sẵn, dùng oracle route/parameter khai báo tường minh.
 
-    A scenario is scored as TP when at least one finding matches both its category and its route
-    prefix (:parameter). Unmatched findings are reported separately and are never counted as FP,
-    because the absence of an oracle on a route is not evidence that the route is safe.
+    Một kịch bản tính TP khi có ít nhất một phát hiện khớp cả category lẫn tiền tố route
+    (và parameter). Phát hiện chưa khớp được báo riêng và KHÔNG tính là FP, vì việc một
+    route không có oracle không chứng minh route đó an toàn.
     """
     page_labs = {p.get("lab") for p in pages if p.get("lab")}
     page_fixture_ids = {p.get("fixture_id") for p in pages if p.get("fixture_id")}
@@ -102,7 +111,7 @@ def evaluate_lab(target: str, pages: list[dict], findings: list) -> dict:
     outcomes = [s["outcome"] for s in scenarios]
     unexpected = len(set(range(len(findings))) - matched)
     result = metrics(outcomes.count("TP"), 0, outcomes.count("FN"), 0)
-    # No oracle is defined for non-vulnerable routes on these labs, so FPR stays unavailable.
+    # Các lab này không có oracle cho route không-lỗ, nên FPR để trống (không tính được).
     result["fpr_available"] = False
     result["false_positive_rate"] = None
     return {**result, "ground_truth_available": True, "fixture_id": fixture.get("fixture_id"),
@@ -113,13 +122,12 @@ def evaluate_lab(target: str, pages: list[dict], findings: list) -> dict:
 
 
 def evaluate_extended(target: str, pages: list[dict], findings: list) -> dict:
-    """Scenario-level metrics for the added OWASP Top 10:2025 categories.
+    """Chấm điểm cho các nhóm OWASP Top 10:2025 bổ sung.
 
-    The /demo fixture is the positive case (every extended category is expected);
-    /demo-safe is the negative case (none expected). Matching is by category and
-    by the finding URL path falling under the fixture path, since passive findings
-    carry no parameter. Kept independent of evaluate_demo so the core benchmark
-    is never affected.
+    Fixture /demo là ca dương (kỳ vọng có mọi nhóm mở rộng); /demo-safe là ca âm
+    (không kỳ vọng nhóm nào). So khớp theo category và theo đường dẫn URL của phát hiện
+    nằm dưới đường dẫn fixture, vì phát hiện thụ động không mang parameter. Tách độc lập
+    khỏi evaluate_demo để không ảnh hưởng benchmark lõi.
     """
     path = urlparse(target).path.rstrip("/") or "/"
     fixture = next((f for f in MANIFEST["fixtures"]

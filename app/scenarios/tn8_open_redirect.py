@@ -11,9 +11,11 @@ from app.open_redirect import check_open_redirect
 
 @register("Open Redirect (active, Location oracle)")
 def open_redirect(ctx: DetectorContext):
+    """Open Redirect tổng quát: tiêm URL ngoài, kết luận qua header Location 3xx."""
     return check_open_redirect(ctx.tools, ctx.pages)
 
 
 @register("Open Redirect (lab-pinned)")
 def open_redirect_lab(ctx: DetectorContext):
+    """Open Redirect ghim theo lab (Juice Shop vượt allowlist kiểu 'chứa chuỗi')."""
     return lab_open_redirect_checks(ctx.tools, ctx.pages)

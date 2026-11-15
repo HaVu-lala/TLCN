@@ -16,10 +16,11 @@ from app.stored_xss import stored_xss_blackbox
 
 @register("A05 reflected XSS (browser oracle)")
 def reflected_xss(ctx: DetectorContext):
+    """Reflected XSS xác nhận bằng thực thi Chromium trên mọi tham số GET."""
     return browser_reflected_xss(ctx.tools, ctx.pages)
 
 
 @register("A05 stored XSS (black-box seed-and-revisit, active mode)")
 def stored_xss(ctx: DetectorContext):
-    # Oracle hộp đen tổng quát; chỉ chạy khi settings.aggressive_scan = True.
+    """Stored XSS hộp đen tổng quát; chỉ chạy khi settings.aggressive_scan = True."""
     return stored_xss_blackbox(ctx.tools, ctx.pages)

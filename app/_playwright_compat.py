@@ -16,6 +16,10 @@ import sys
 
 @contextlib.contextmanager
 def playwright_event_loop_policy():
+    """Tạm chuyển event-loop policy sang Proactor trên Windows quanh lúc dùng Playwright.
+
+    Trên nền tảng khác Windows: không làm gì. Luôn khôi phục policy cũ khi thoát.
+    """
     if sys.platform.startswith("win"):
         previous = asyncio.get_event_loop_policy()
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())

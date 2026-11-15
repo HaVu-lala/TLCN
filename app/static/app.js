@@ -56,7 +56,7 @@ form.addEventListener('submit', async (event) => {
   const reqlogEl = document.querySelector('#reqlog');
   let liveCount = 0;
   if (reqlogEl) {
-    reqlogEl.innerHTML = `<span class="trace-label">NHẬT KÝ YÊU CẦU — đang quét...</span><div class="reqlog-body" id="reqlog-body"></div>`;
+    reqlogEl.innerHTML = `<span class="trace-label">NHẬT KÝ YÊU CẦU - đang quét...</span><div class="reqlog-body" id="reqlog-body"></div>`;
   }
   const liveTimer = window.setInterval(async () => {
     try {
@@ -70,7 +70,7 @@ form.addEventListener('submit', async (event) => {
         }
         liveCount = d.total;
         const label = reqlogEl && reqlogEl.querySelector('.trace-label');
-        if (label) label.textContent = `NHẬT KÝ YÊU CẦU (${d.total})${d.running ? ' — đang quét...' : ''}`;
+        if (label) label.textContent = `NHẬT KÝ YÊU CẦU (${d.total})${d.running ? ' - đang quét...' : ''}`;
       }
     } catch (e) {}
   }, 400);

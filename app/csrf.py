@@ -19,6 +19,7 @@ TOKEN_HINTS = ("csrf", "xsrf", "_token", "authenticity_token", "nonce",
 
 # [TN9 - CSRF] Heuristic nghi ngờ: form POST thiếu token chống CSRF -> Potential CSRF (severity thấp, ngoài tập chấm điểm).
 def check_csrf(tools, pages: list[dict]) -> list[Finding]:
+    """Heuristic: gắn nhãn 'Potential CSRF' cho mỗi form POST không có trường token chống CSRF."""
     findings: list[Finding] = []
     seen: set[str] = set()
     for page in pages:

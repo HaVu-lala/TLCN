@@ -34,7 +34,7 @@ from app.detectors import DetectorContext, register
 
 # Endpoint API đã biết cần kiểm SQLi bằng thân JSON. Mỗi mục:
 #   path         - đường dẫn tương đối trên origin mục tiêu
-#   method       - HTTP method
+#   method       - phương thức HTTP
 #   inject_field - trường JSON sẽ tiêm dấu nháy đơn
 #   fields       - toàn bộ trường bắt buộc + giá trị hợp lệ để vượt kiểm tra phía
 #                  trước (vd newPassword == confirmPassword) và chạm tới câu SQL
